@@ -1,0 +1,293 @@
+[
+  {
+    "bucket": "policy",
+    "question": "只看 2026 年 Q1 内部版本的 session summary 说明，主要讲了什么",
+    "ground_truth": "应只依据 2026 年 Q1 且权限为 internal 的 session summary 相关文档回答，不应混入其他年份、季度或公开版本内容。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "filters": {
+      "year": {"eq": 2026},
+      "quarter": {"eq": "Q1"},
+      "permission": {"eq": "internal"},
+      "tags": ["session-summary"]
+    },
+    "tags": ["metadata", "permission", "time-filter"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true
+  },
+  {
+    "bucket": "policy",
+    "question": "仅查看 2025 年公开版的 summary 文档，这一版重点更新了什么",
+    "ground_truth": "应只检索 year=2025 且 permission=public 的文档内容，不应把内部版本说明带进回答。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "filters": {
+      "year": {"eq": 2025},
+      "permission": {"eq": "public"}
+    },
+    "tags": ["metadata", "public-version"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true
+  },
+  {
+    "bucket": "policy",
+    "question": "受限版本里关于 session summary 的注意事项是什么",
+    "ground_truth": "应限制在 restricted 权限文档内作答，并明确回答来自受限资料。",
+    "collection_name": "demo",
+    "top_k": 4,
+    "filters": {
+      "permission": {"eq": "restricted"},
+      "tags": ["session-summary"]
+    },
+    "tags": ["metadata", "restricted"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true
+  },
+  {
+    "bucket": "policy",
+    "question": "请按 2026 年 Q2 的资料回答 session summary 的定位",
+    "ground_truth": "回答应只基于 2026Q2 相关资料，不应混入 Q1 或其它季度的表述。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "filters": {
+      "year": {"eq": 2026},
+      "quarter": {"eq": "Q2"}
+    },
+    "tags": ["metadata", "quarter-filter"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true
+  },
+  {
+    "bucket": "long_summary",
+    "question": "总结一下 session summary 章节整体在说什么，不要只给一句局部片段",
+    "ground_truth": "应返回章节级或父块级总结，而不是只截取单个子块的零散句子。",
+    "collection_name": "demo",
+    "top_k": 4,
+    "tags": ["parent-chunk", "small-to-big", "long-summary"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true
+  },
+  {
+    "bucket": "long_summary",
+    "question": "把 session summary 那一节完整概括一下，重点带上上下文关系",
+    "ground_truth": "回答应体现章节整体结构和上下文，而不是只返回单句结论。",
+    "collection_name": "demo",
+    "top_k": 4,
+    "tags": ["parent-chunk", "chapter-summary"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true
+  },
+  {
+    "bucket": "long_summary",
+    "question": "如果我想看 session summary 的整段说明，应该总结出哪些关键点",
+    "ground_truth": "应基于父块扩展后的上下文给出多点总结，而不是只依赖一个子块。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["parent-chunk", "long-context"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true
+  },
+  {
+    "bucket": "long_summary",
+    "question": "概括 summary 模块章节的整体能力和适用场景",
+    "ground_truth": "回答应覆盖章节级能力说明与适用场景，体现 large-context 总结能力。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["parent-chunk", "scene-summary"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true
+  },
+  {
+    "bucket": "faq",
+    "question": "session summary 平时怎么查看",
+    "ground_truth": "应命中 session summary 相关真实内容块，即使问题用的是口语化问法。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "faq"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "faq",
+    "question": "这个摘要接口在哪看",
+    "ground_truth": "应通过口语化问法召回 session summary 或 summary 接口相关内容，而不是完全 miss 掉。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "faq", "where-to-find"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "faq",
+    "question": "summary 功能一般怎么用",
+    "ground_truth": "应匹配到 summary / session summary 的真实能力说明，回答使用方式或用途。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "faq", "usage"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "faq",
+    "question": "这个能力大概是拿来做什么的",
+    "ground_truth": "应能够把模糊口语问法映射回真实摘要能力文档，而不是返回无关模块。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "faq", "fuzzy-intent"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "terminology",
+    "question": "这个摘要接口一般是干什么的",
+    "ground_truth": "应能通过 query-hint 或等价问法召回 session summary / summary 接口的真实文档内容。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "terminology"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "terminology",
+    "question": "会话摘要接口具体指哪个能力",
+    "ground_truth": "应把“会话摘要”这种中文别名映射回 session summary 相关能力说明。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["question-oriented", "terminology", "alias"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "terminology",
+    "question": "summary API 和 session summary 是一回事吗",
+    "ground_truth": "应围绕 summary/session summary 的术语关系作答，并尽量引用真实文档表述。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["terminology", "alias", "api-name"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "terminology",
+    "question": "文档里说的摘要模块是不是就是 summary service",
+    "ground_truth": "应正确对齐术语别名和模块名，不应把不相关 service 混为一谈。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["terminology", "module-alias"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_question_oriented_index": true
+  },
+  {
+    "bucket": "faq",
+    "question": "session summary 接口会自动同步 CRM 吗",
+    "ground_truth": "如果证据中没有 CRM 自动同步能力，应明确说明未找到足够依据，而不是编造额外能力。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["corrective-rag", "high-risk"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_corrective_rag": true
+  },
+  {
+    "bucket": "faq",
+    "question": "这个摘要能力是不是默认会把所有外部系统都同步进来",
+    "ground_truth": "若证据中没有“同步所有外部系统”的结论，应明确说明证据不足，不要过度扩展。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["corrective-rag", "hallucination-guard"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_corrective_rag": true
+  },
+  {
+    "bucket": "faq",
+    "question": "session summary 会自动生成销售线索吗",
+    "ground_truth": "若文档没有销售线索自动生成能力，应给出保守回答或说明未找到足够依据。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["corrective-rag", "unsupported-claim"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_corrective_rag": true
+  },
+  {
+    "bucket": "faq",
+    "question": "这个模块是不是一定会把对话发到第三方平台",
+    "ground_truth": "若证据未明确说明第三方平台同步，应保守作答并避免臆测隐私或外发行为。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "tags": ["corrective-rag", "privacy-risk"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_corrective_rag": true
+  },
+  {
+    "bucket": "policy",
+    "question": "请基于内部版文档，概括 2026Q1 的 session summary 能力和查看方式",
+    "ground_truth": "应结合 metadata 过滤、问法召回与章节级上下文，输出受限于 internal/2026Q1 范围内的正确总结。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "filters": {
+      "year": {"eq": 2026},
+      "quarter": {"eq": "Q1"},
+      "permission": {"eq": "internal"}
+    },
+    "tags": ["full-stack", "metadata", "parent-chunk", "question-oriented", "corrective-rag"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true,
+    "use_question_oriented_index": true,
+    "use_corrective_rag": true
+  },
+  {
+    "bucket": "policy",
+    "question": "在内部受限资料里，summary 章节整体怎么描述它的用途",
+    "ground_truth": "应同时受 metadata 权限限制并使用父块上下文总结，回答不要超出内部受限资料范围。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "filters": {
+      "permission": {"eq": "internal"},
+      "tags": ["summary"]
+    },
+    "tags": ["full-stack", "policy", "long-summary"],
+    "use_query_rewrite": true,
+    "use_hybrid_retrieval": true,
+    "use_rerank": true,
+    "use_parent_chunk_retrieval": true,
+    "use_question_oriented_index": true,
+    "use_corrective_rag": true
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "benchmark_id": "task-benchmark-688c59ff",
+  "dataset_path": "/Users/bytedance/Desktop/files/self/lania-zip/rag/data/eval/local-document-analysis-benchmark.json",
+  "collection_name": "semantic-cache-demo",
+  "summary": "完成 1 条 Document Analysis benchmark，成功 1 条，失败 0 条。",
+  "sample_count": 1,
+  "success_count": 1,
+  "failed_count": 0,
+  "metrics": {
+    "success_rate": 1.0,
+    "avg_score": 0.7,
+    "avg_findings_hit_rate": 1.0,
+    "avg_risks_hit_rate": 0.0,
+    "avg_artifact_completeness": 1.0
+  },
+  "samples": [
+    {
+      "index": 1,
+      "instructions": "总结会话摘要接口的用途、调用方式、风险点和待确认问题",
+      "collection_name": "semantic-cache-demo",
+      "doc_ids": [
+        "doc-4f1a909a"
+      ],
+      "task_id": "task-2a22b0b38d2a",
+      "status": "completed",
+      "score": 0.7,
+      "findings_hit_rate": 1.0,
+      "risks_hit_rate": 0.0,
+      "artifact_completeness": 1.0,
+      "evidence_count": 1,
+      "open_question_count": 0,
+      "expected_findings": [
+        "会话摘要接口",
+        "调用 POST /api/v1/sessions/{session_id}/summary"
+      ],
+      "expected_risks": [
+        "风险"
+      ],
+      "error": null
+    }
+  ],
+  "result_path": null,
+  "completed_at": "2026-06-06T11:24:16.866732Z"
+}

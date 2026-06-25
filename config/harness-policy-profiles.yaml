@@ -1,0 +1,190 @@
+default_profile: document_analysis_default
+profiles:
+  - name: document_analysis_default
+    version: v1
+    match_keywords: []
+    require_evidence: false
+    min_coverage: 0.0
+    confidence_threshold: 0.0
+    require_review_passed: false
+    max_plan_steps: 16
+    max_open_questions: 10
+    allowed_output_formats:
+      - markdown
+      - json
+      - markdown+json
+    blocked_tools: []
+    evaluation_baseline_order:
+      - benchmark
+      - report
+      - version
+      - task
+    context_policies:
+      collect_document_context:
+        evidence_top_k: 0
+        memory_limit: 0
+        artifact_scope: none
+        document_limit: 10
+        token_budget: 4000
+      retrieve_evidence:
+        evidence_top_k: 10
+        evidence_relevance_threshold: 0.2
+        memory_limit: 1
+        artifact_scope: none
+        document_limit: 5
+        token_budget: 6000
+      analyze:
+        evidence_top_k: 8
+        evidence_relevance_threshold: 0.3
+        memory_limit: 2
+        reflection_limit: 1
+        artifact_scope: none
+        document_limit: 6
+        risk_limit: 5
+        compression_enabled: true
+        compression_max_sentences: 3
+        compression_max_chars: 1500
+        token_budget: 10000
+      draft_artifact:
+        evidence_top_k: 6
+        evidence_relevance_threshold: 0.4
+        memory_limit: 3
+        reflection_limit: 2
+        artifact_scope: none
+        document_limit: 6
+        risk_limit: 5
+        compression_enabled: true
+        compression_max_sentences: 4
+        compression_max_chars: 2000
+        token_budget: 12000
+      review_artifact:
+        evidence_top_k: 6
+        evidence_relevance_threshold: 0.35
+        memory_limit: 3
+        reflection_limit: 2
+        artifact_scope: full
+        document_limit: 6
+        risk_limit: 5
+        compression_enabled: true
+        compression_max_sentences: 3
+        compression_max_chars: 1800
+        token_budget: 10000
+      revise_artifact:
+        evidence_top_k: 8
+        evidence_relevance_threshold: 0.3
+        memory_limit: 3
+        reflection_limit: 2
+        artifact_scope: full
+        document_limit: 6
+        risk_limit: 5
+        compression_enabled: true
+        compression_max_sentences: 4
+        compression_max_chars: 2000
+        token_budget: 12000
+      finalize:
+        evidence_top_k: 5
+        evidence_relevance_threshold: 0.4
+        memory_limit: 2
+        reflection_limit: 1
+        artifact_scope: summary
+        document_limit: 5
+        risk_limit: 3
+        compression_enabled: true
+        compression_max_sentences: 2
+        compression_max_chars: 1000
+        token_budget: 8000
+
+  - name: contract_review
+    version: v1
+    match_keywords:
+      - contract
+      - 合同
+    require_evidence: true
+    min_coverage: 0.7
+    confidence_threshold: 0.5
+    require_review_passed: true
+    max_plan_steps: 16
+    max_open_questions: 6
+    allowed_output_formats:
+      - markdown
+      - json
+      - markdown+json
+    blocked_tools: []
+    evaluation_baseline_order:
+      - benchmark
+      - report
+      - version
+      - task
+    context_policies:
+      analyze:
+        evidence_top_k: 10
+        evidence_relevance_threshold: 0.35
+        compression_max_chars: 2000
+        token_budget: 12000
+      review_artifact:
+        evidence_top_k: 8
+        artifact_scope: full
+        token_budget: 12000
+
+  - name: financial_report
+    version: v1
+    match_keywords:
+      - finance
+      - financial
+      - 财务
+      - 金融
+    require_evidence: true
+    min_coverage: 0.75
+    confidence_threshold: 0.8
+    require_review_passed: true
+    max_plan_steps: 16
+    max_open_questions: 4
+    allowed_output_formats:
+      - markdown
+      - json
+      - markdown+json
+    blocked_tools: []
+    evaluation_baseline_order:
+      - benchmark
+      - report
+      - version
+      - task
+    context_policies:
+      analyze:
+        evidence_top_k: 12
+        evidence_relevance_threshold: 0.4
+        compression_max_chars: 2500
+        token_budget: 15000
+      draft_artifact:
+        evidence_top_k: 8
+        artifact_scope: full
+        token_budget: 15000
+
+  - name: technical_analysis
+    version: v1
+    match_keywords:
+      - technical
+      - tech
+      - 技术
+    require_evidence: true
+    min_coverage: 0.7
+    confidence_threshold: 0.4
+    require_review_passed: false
+    max_plan_steps: 16
+    max_open_questions: 8
+    allowed_output_formats:
+      - markdown
+      - json
+      - markdown+json
+    blocked_tools: []
+    evaluation_baseline_order:
+      - benchmark
+      - report
+      - version
+      - task
+    context_policies:
+      analyze:
+        evidence_top_k: 8
+        evidence_relevance_threshold: 0.25
+        compression_max_chars: 1800
+        token_budget: 10000

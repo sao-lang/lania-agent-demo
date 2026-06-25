@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      ENABLE_EMBEDDED_TASK_WORKER: "false"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - chroma
+
+  task-worker:
+    build: .
+    command: ["python", "-m", "app.task_worker"]
+    env_file:
+      - .env
+    environment:
+      ENABLE_EMBEDDED_TASK_WORKER: "false"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - chroma
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma

@@ -1,0 +1,19 @@
+[
+  {
+    "bucket": "api",
+    "question": "session summary 接口是什么",
+    "ground_truth": "session summary 接口用于生成或刷新会话摘要，便于压缩历史消息并保持上下文一致。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "use_query_rewrite": true
+  },
+  {
+    "bucket": "feedback",
+    "question": "如何导出评测集 JSON",
+    "ground_truth": "可以通过反馈接口导出评测集 JSON，用于后续 RAGAS 或回放对比评测。",
+    "collection_name": "demo",
+    "top_k": 5,
+    "use_query_rewrite": true
+  }
+]
+

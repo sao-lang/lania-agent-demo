@@ -1,0 +1,65 @@
+name: Regression Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_path:
+        description: Dataset path for regression evaluation
+        required: true
+        default: data/eval/accuracy_regression_eval.json
+      collection_name:
+        description: Collection name for evaluation
+        required: true
+        default: demo
+      trend_limit:
+        description: Number of recent accuracy reports to include in trend report
+        required: true
+        default: "10"
+
+jobs:
+  regression-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run Regression Pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_EMBED_MODEL: ${{ vars.OPENAI_EMBED_MODEL }}
+          OPENAI_LLM_MODEL: ${{ vars.OPENAI_LLM_MODEL }}
+        run: |
+          .venv/bin/python scripts/run_regression_pipeline.py \
+            --dataset-path "${{ inputs.dataset_path }}" \
+            --collection-name "${{ inputs.collection_name }}" \
+            --trend-limit "${{ inputs.trend_limit }}" \
+            --accuracy-report-name ci-accuracy-report \
+            --trend-report-name ci-accuracy-trend \
+            --report-name ci-regression-pipeline \
+            --fail-on-gate-fail
+
+      - name: Upload Regression Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-pipeline-artifacts
+          path: |
+            data/eval/ci-accuracy-report.json
+            data/eval/ci-accuracy-report.md
+            data/eval/ci-accuracy-trend.json
+            data/eval/ci-accuracy-trend.md
+            data/eval/ci-regression-pipeline.json
+            data/eval/ci-regression-pipeline.md
+          if-no-files-found: warn

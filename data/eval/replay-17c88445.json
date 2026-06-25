@@ -1,0 +1,185 @@
+{
+  "compare_id": "replay-17c88445",
+  "dataset_path": "/var/folders/8r/4z8j6rfd1s32xtxbk1l7t0m80000gn/T/tmpwglbcau5/dataset.json",
+  "collection_name": "demo",
+  "baseline_name": "s1",
+  "summary": "完成 2 组回放对比，基线策略为 s1。",
+  "strategies": [
+    {
+      "strategy": {
+        "name": "s1",
+        "top_k": 2,
+        "use_query_rewrite": true,
+        "use_multi_query": false,
+        "multi_query_count": 3,
+        "use_multi_rewrite": false,
+        "multi_rewrite_count": 3,
+        "use_hybrid_retrieval": false,
+        "use_rerank": true,
+        "use_hyde": false,
+        "use_long_context_reorder": false
+      },
+      "sample_count": 2,
+      "success_count": 1,
+      "failed_count": 1,
+      "avg_retrieved_count": 0.5,
+      "avg_latency_ms": 11.0,
+      "buckets": {
+        "api": {
+          "bucket": "api",
+          "sample_count": 1,
+          "success_count": 1,
+          "failed_count": 0,
+          "avg_retrieved_count": 1.0,
+          "avg_latency_ms": 10.0
+        },
+        "faq": {
+          "bucket": "faq",
+          "sample_count": 1,
+          "success_count": 0,
+          "failed_count": 1,
+          "avg_retrieved_count": 0.0,
+          "avg_latency_ms": 12.0
+        }
+      }
+    },
+    {
+      "strategy": {
+        "name": "s2",
+        "top_k": 2,
+        "use_query_rewrite": false,
+        "use_multi_query": false,
+        "multi_query_count": 3,
+        "use_multi_rewrite": false,
+        "multi_rewrite_count": 3,
+        "use_hybrid_retrieval": false,
+        "use_rerank": true,
+        "use_hyde": false,
+        "use_long_context_reorder": false
+      },
+      "sample_count": 2,
+      "success_count": 1,
+      "failed_count": 1,
+      "avg_retrieved_count": 0.5,
+      "avg_latency_ms": 11.0,
+      "buckets": {
+        "api": {
+          "bucket": "api",
+          "sample_count": 1,
+          "success_count": 1,
+          "failed_count": 0,
+          "avg_retrieved_count": 1.0,
+          "avg_latency_ms": 10.0
+        },
+        "faq": {
+          "bucket": "faq",
+          "sample_count": 1,
+          "success_count": 0,
+          "failed_count": 1,
+          "avg_retrieved_count": 0.0,
+          "avg_latency_ms": 12.0
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "success_rate": {
+      "metric": "success_rate",
+      "baseline": 0.5,
+      "best_strategy": "s1",
+      "best_value": 0.5,
+      "deltas": {
+        "s1": 0.0,
+        "s2": 0.0
+      }
+    },
+    "avg_retrieved_count": {
+      "metric": "avg_retrieved_count",
+      "baseline": 0.5,
+      "best_strategy": "s1",
+      "best_value": 0.5,
+      "deltas": {
+        "s1": 0.0,
+        "s2": 0.0
+      }
+    },
+    "avg_latency_ms": {
+      "metric": "avg_latency_ms",
+      "baseline": 11.0,
+      "best_strategy": "s1",
+      "best_value": 11.0,
+      "deltas": {
+        "s1": 0.0,
+        "s2": 0.0
+      }
+    }
+  },
+  "bucket_metrics": {
+    "api": {
+      "success_rate": {
+        "metric": "success_rate",
+        "baseline": 1.0,
+        "best_strategy": "s1",
+        "best_value": 1.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      },
+      "avg_retrieved_count": {
+        "metric": "avg_retrieved_count",
+        "baseline": 1.0,
+        "best_strategy": "s1",
+        "best_value": 1.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      },
+      "avg_latency_ms": {
+        "metric": "avg_latency_ms",
+        "baseline": 10.0,
+        "best_strategy": "s1",
+        "best_value": 10.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      }
+    },
+    "faq": {
+      "success_rate": {
+        "metric": "success_rate",
+        "baseline": 0.0,
+        "best_strategy": "s1",
+        "best_value": 0.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      },
+      "avg_retrieved_count": {
+        "metric": "avg_retrieved_count",
+        "baseline": 0.0,
+        "best_strategy": "s1",
+        "best_value": 0.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      },
+      "avg_latency_ms": {
+        "metric": "avg_latency_ms",
+        "baseline": 12.0,
+        "best_strategy": "s1",
+        "best_value": 12.0,
+        "deltas": {
+          "s1": 0.0,
+          "s2": 0.0
+        }
+      }
+    }
+  },
+  "result_path": null,
+  "completed_at": "2026-06-02T11:32:30.015086Z"
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "collection_name": "semantic-cache-demo",
+    "bucket": "api_review",
+    "doc_ids": [
+      "doc-4f1a909a"
+    ],
+    "instructions": "总结会话摘要接口的用途、调用方式、风险点和待确认问题",
+    "focus_dimensions": [
+      "用途",
+      "调用方式",
+      "风险点",
+      "待确认问题"
+    ],
+    "key_evidence_points": [
+      "会话摘要接口",
+      "POST /api/v1/sessions/{session_id}/summary"
+    ],
+    "forbidden_claims": [
+      "完全没有风险"
+    ],
+    "expected_findings": [
+      "会话摘要接口",
+      "调用 POST /api/v1/sessions/{session_id}/summary"
+    ],
+    "expected_risks": [
+      "风险"
+    ]
+  }
+]
