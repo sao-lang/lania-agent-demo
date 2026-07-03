@@ -5,13 +5,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class ContextBundle(BaseModel):
-    """进入单个步骤前的最小上下文切片。"""
+    """进入单个步骤前的最小上下文切片，附带来源与可靠性元数据。"""
 
     step_id: str
     objective: str
@@ -21,6 +22,44 @@ class ContextBundle(BaseModel):
     memory_slice: dict[str, Any] = Field(default_factory=dict)
     tool_options: list[str] = Field(default_factory=list)
     token_budget: int = Field(default=0, ge=0)
+    # ── 可靠性元数据 (Direction 6) ──────────────────────────────
+    source_summary: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            '记录每个 slice 的来源，例如 '
+            '{"evidence_slice": "rag_retrieve_evidence/task123", '
+            '"state_slice": "task.state.current_step"}'
+        ),
+    )
+    reliability_summary: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            '记录每个 slice 的可靠性评估，例如 '
+            '{"evidence_slice": {"trust_level": "verified", '
+            '"items_with_gaps": 0}}'
+        ),
+    )
+    dropped_context_notes: list[str] = Field(
+        default_factory=list,
+        description=(
+            '记录哪些候选上下文被裁掉及原因，例如 '
+            '["artifact_slice 超预算: 截断为 2000 token",'
+            ' "memory_slice: 3 条 stale 记录已排除"]'
+        ),
+    )
+    context_version: int = Field(
+        default=1, ge=0,
+        description='ContextBundle 版本，用于追踪构建策略变更',
+    )
+    built_at: str | None = Field(
+        default=None,
+        description='上下文构建时间戳（ISO 格式）',
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        """自动填充时间戳。"""
+        if self.built_at is None:
+            self.built_at = datetime.now(timezone.utc).isoformat()
 
 
 class ToolExecutionResult(BaseModel):

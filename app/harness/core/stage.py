@@ -1,11 +1,12 @@
 """Harness Stage 契约模块。
 
-约束单个 stage 的最小执行接口，并提供一个可被继承的基础类，方便不同
-runtime 以一致方式组织阶段执行。
+约束单个 stage 的最小执行接口，并提供可被继承的基础类与丰富生命周期支持，
+方便不同 runtime 以一致方式组织阶段执行。
 """
 
 from __future__ import annotations
 
+from dataclasses import field
 from typing import Protocol
 
 
@@ -20,11 +21,30 @@ class HarnessStage(Protocol):
 
 
 class BaseStage:
-    """阶段基类，占住稳定扩展位。"""
+    """阶段基类，占住稳定扩展位，并提供元数据信息。
+
+    子类可以重写以下方法：
+    - run(): 阶段执行逻辑
+    - validate_input(state, ctx): 执行前校验输入
+    """
 
     name = ''
+    description: str = ''
+    timeout_ms: int = 30000
+    allowed_tools: list[str] = field(default_factory=list)
+    requires_policy_check: bool = True
+    requires_guardrail: bool = True
+    creates_checkpoint_after: bool = False
+    risk_level: str = 'low'
 
     def run(self, state: dict, ctx) -> dict:
         """由具体子类实现阶段执行逻辑。"""
-
         raise NotImplementedError
+
+    def validate_input(self, state: dict, ctx) -> list[str]:
+        """执行前校验输入状态是否满足前置条件；返回空列表表示通过。"""
+        return []
+
+    def validate_output(self, new_state: dict) -> list[str]:
+        """执行后校验输出状态是否合法；返回空列表表示通过。"""
+        return []

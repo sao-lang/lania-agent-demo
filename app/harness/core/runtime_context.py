@@ -20,6 +20,7 @@ class RuntimeContext(BaseModel):
     task_id: str | None = None
     run_id: str | None = None
     trace: Any | None = None
+    event_bus: Any | None = None
     tool_registry: Any | None = None
     tool_executor: Any | None = None
     subagent_runtime: Any | None = None

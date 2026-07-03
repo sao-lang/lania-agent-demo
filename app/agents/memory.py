@@ -323,6 +323,71 @@ class TaskMemory:
             self.persistence.upsert_artifact(payload)
         return artifact
 
+    def append_memory_record(
+        self,
+        record: MemoryRecord,
+        *,
+        task_id: str | None = None,
+    ) -> TaskDetail | None:
+        """直接追加一条统一的 MemoryRecord。
+
+        这是新的活跃写入方法，绕过旧的 TaskMemoryEntry 中间层。
+        如果 task_id 为空，则从 record.namespace 中提取。
+
+        Args:
+            record: 已构造好的 MemoryRecord 实例。
+            task_id: 可选的任务 ID；为空时从 record.namespace 提取。
+
+        Returns:
+            更新后的 TaskDetail 对象，或返回 None（任务不存在时）。
+        """
+        tid = task_id or record.namespace.get('task_id')
+        if tid is None:
+            return None
+        task = self.get_task(tid)
+        if task is None:
+            return None
+        task.memory_records.append(record)
+        task.memory_records = task.memory_records[-200:]
+        return self.upsert_task(task)
+
+    def query_memory_records(
+        self,
+        task_id: str,
+        *,
+        scope: str | None = None,
+        kind: str | None = None,
+        trust_level: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]:
+        """按条件查询任务的 MemoryRecord。
+
+        Args:
+            task_id: 任务标识。
+            scope: 可选过滤范围（working / session / run / semantic / profile）。
+            kind: 可选过滤种类。
+            trust_level: 可选过滤信任级别。
+            limit: 最大返回条数。
+
+        Returns:
+            符合条件的 MemoryRecord 列表，按创建时间倒序。
+        """
+        task = self.get_task(task_id)
+        if task is None:
+            return []
+        records = task.memory_records
+        if scope is not None:
+            records = [r for r in records if r.scope == scope]
+        if kind is not None:
+            records = [r for r in records if r.kind == kind]
+        if trust_level is not None:
+            records = [r for r in records if r.trust_level == trust_level]
+        return sorted(
+            records,
+            key=lambda r: (r.created_at, r.memory_id),
+            reverse=True,
+        )[:limit]
+
     def append_task_memory(
         self,
         task_id: str,

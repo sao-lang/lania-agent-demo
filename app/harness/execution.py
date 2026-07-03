@@ -25,6 +25,8 @@ from app.harness.components.execution_hooks import ExecutionHooks
 from app.harness.components.execution_policy import ExecutionPolicyResolver
 from app.harness.components.fallback_handler import FallbackHandler
 from app.harness.components.tool_executor import ExecutionRuntimeDependencies, ToolExecutor
+from app.harness.core.hooks import EventBus
+from app.harness.core.trace_hook import TraceHook
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.models import ContextBundle, ExecutionRuntimeSummary, ToolExecutionResult
@@ -60,8 +62,9 @@ class ExecutionHarness:
         policy_engine: PolicyEngine | None = None,
         sandbox_engine: ToolSandbox | None = None,
         model_router: ModelRouter | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
-        """初始化执行 facade 及其 policy/guardrail/sandbox 组件。"""
+        """初始化执行 facade 及其 policy/guardrail/sandbox/event_bus 组件。"""
 
         self.registry = registry
         self.memory = memory
@@ -92,7 +95,12 @@ class ExecutionHarness:
         self.policy_engine = policy_engine or PolicyEngine()
         self.sandbox_engine = sandbox_engine or ToolSandbox()
         self.model_router = model_router or ModelRouter()
-        self.hooks = ExecutionHooks(memory=self.memory, trace=self.trace)
+        # 初始化 EventBus 并注册默认 trace hook
+        self.event_bus = event_bus or EventBus()
+        self.event_bus.register(TraceHook(trace=self.trace))
+        self.hooks = ExecutionHooks(
+            memory=self.memory, trace=self.trace, event_bus=self.event_bus
+        )
         self.policy_resolver = ExecutionPolicyResolver(registry=self.registry, settings=self.settings)
         self.fallback_handler = FallbackHandler(memory=self.memory, trace=self.trace)
         self.tool_executor = ToolExecutor(

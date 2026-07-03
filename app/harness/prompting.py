@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.harness.core.prompt_registry import PromptVersionRegistry
 from app.harness.grounding import GroundingBundle
 from app.harness.models import ContextBundle
 from app.harness.policy import PolicyProfile
@@ -50,10 +51,19 @@ class PromptBuilder:
     - 与 policy / context / grounding 统一拼装
     """
 
-    def __init__(self) -> None:
-        """初始化模板仓库并注册默认模板。"""
+    def __init__(
+        self,
+        version_registry: PromptVersionRegistry | None = None,
+    ) -> None:
+        """初始化模板仓库并注册默认模板。
+
+        Args:
+            version_registry: 可选的 prompt 版本注册表；
+                提供时将同步注册默认模板到版本管理。
+        """
 
         self.templates: dict[str, dict[str, PromptTemplate]] = {}
+        self.version_registry = version_registry or PromptVersionRegistry()
         self._register_default_templates()
 
     def _register_default_templates(self) -> None:
