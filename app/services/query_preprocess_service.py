@@ -15,6 +15,7 @@ from app.models.query import CitationItem, QueryRequest
 from app.rag.guardrails import inspect_prompt_injection, redact_text
 from app.rag.observability import TraceRecorder
 from app.rag.retrieval import RagRetrievalService
+from app.services.system_settings import RuntimeConfigReader
 
 
 class QueryPreprocessService:
@@ -26,6 +27,7 @@ class QueryPreprocessService:
         retrieval_service: RagRetrievalService,
         trace: TraceRecorder,
         llm: Any | None = None,
+        runtime_config: RuntimeConfigReader | None = None,
     ) -> None:
         """初始化查询前处理服务。
 
@@ -34,24 +36,36 @@ class QueryPreprocessService:
             retrieval_service: 检索服务，用于执行规则改写和多路改写生成。
             trace: 链路追踪记录器，用于记录前处理阶段事件。
             llm: 可选的大模型实例，用于多查询和 HyDE 扩展。
+            runtime_config: 运行时配置，优先于 settings。
         """
         self.settings = settings
         self.retrieval_service = retrieval_service
         self.trace = trace
         self.llm = llm
+        self._runtime_config = runtime_config
+
+    def _guardrails_enabled(self) -> bool:
+        if self._runtime_config is not None:
+            return self._runtime_config.enable_prompt_guardrails
+        return self.settings.enable_prompt_guardrails
+
+    def _pii_enabled(self) -> bool:
+        if self._runtime_config is not None:
+            return self._runtime_config.enable_pii_redaction
+        return self.settings.enable_pii_redaction
 
     def use_prompt_guardrails(self, payload: QueryRequest) -> bool:
         """返回本次请求是否启用 Prompt Guardrails。"""
 
         if payload.use_prompt_guardrails is None:
-            return self.settings.enable_prompt_guardrails
+            return self._guardrails_enabled()
         return payload.use_prompt_guardrails
 
     def use_pii_redaction(self, payload: QueryRequest) -> bool:
         """返回本次请求是否启用脱敏。"""
 
         if payload.use_pii_redaction is None:
-            return self.settings.enable_pii_redaction
+            return self._pii_enabled()
         return payload.use_pii_redaction
 
     def empty_redaction_state(self, enabled: bool) -> dict[str, Any]:

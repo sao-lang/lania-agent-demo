@@ -63,6 +63,7 @@ class ExecutionHarness:
         sandbox_engine: ToolSandbox | None = None,
         model_router: ModelRouter | None = None,
         event_bus: EventBus | None = None,
+        services: dict[str, Any] | None = None,
     ) -> None:
         """初始化执行 facade 及其 policy/guardrail/sandbox/event_bus 组件。"""
 
@@ -91,6 +92,7 @@ class ExecutionHarness:
             persistence=memory.persistence,
         )
         self.database = database or build_database_capability_from_provider(settings=settings)
+        self.services = services or {}
         self.guardrail_engine = guardrail_engine or GuardrailEngine(registry)
         self.policy_engine = policy_engine or PolicyEngine()
         self.sandbox_engine = sandbox_engine or ToolSandbox()
@@ -122,6 +124,7 @@ class ExecutionHarness:
                 artifact=self.artifact,
                 database=self.database,
                 model_router=self.model_router,
+                services=self.services,
             ),
             owner_id_getter=self.hooks.workflow_owner_id,
             owner_step_getter=self.hooks.workflow_owner_step,

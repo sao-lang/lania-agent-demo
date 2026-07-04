@@ -5,7 +5,7 @@
 """
 
 from __future__ import annotations
-from typing import cast
+from typing import Any, cast
 
 from app.agents.memory import TaskMemory
 from app.agents.planner import TaskPlanner
@@ -15,9 +15,28 @@ from app.agents.tools.api_contract_tools import ListApiContractsTool, ReadApiCon
 from app.agents.tools.artifact_capability_tools import ListArtifactsTool, ReadArtifactTool
 from app.agents.tools.analysis_tools import ExtractKeyPointsTool, ExtractRisksTool
 from app.agents.tools.artifact_tools import DraftReportTool, FinalizeReportTool, ReviewReportTool
+from app.agents.tools.command_tools import ShellCommandTool, RepositoryCommandTool
 from app.agents.tools.base import AgentTool
 from app.agents.tools.database_tools import DescribeDatabaseTableTool, ListDatabaseTablesTool, QueryDatabaseTool
 from app.agents.tools.defaults import build_runtime_rag_tools
+from app.capabilities.registry import build_default_registry
+from app.services.agent_def_manager import AgentDefManager
+from app.services.agent_service import AgentService
+from app.services.auth_manager import AuthManager
+from app.services.config_store import ConfigStore
+from app.services.intent_matcher import IntentMatcher
+from app.services.llm_config_manager import LlmConfigManager
+from app.services.llm_router import LlmRouter
+from app.services.mcp_manager import McpManager
+from app.services.plan_executor import PlanExecutor
+from app.services.plan_generator import PlanGenerator
+from app.services.prompt_manager import PromptManager
+from app.services.session_manager import SessionManager
+from app.services.skill_manager import SkillManager
+from app.services.system_settings import (
+    RuntimeConfigReader,
+    SystemSettingsManager,
+)
 from app.agents.tools.repository_tools import ListRepositoryFilesTool, ReadRepositoryFileTool, SearchRepositoryTool
 from app.agents.tools.registry import ToolRegistry
 from app.capabilities.api_contract import build_api_contract_capability_from_provider
@@ -25,6 +44,25 @@ from app.capabilities.artifact import build_artifact_capability_from_provider
 from app.capabilities.database import build_database_capability_from_provider
 from app.capabilities.knowledge import build_knowledge_capability
 from app.capabilities.repository import build_repository_capability
+from app.capabilities.weather import WeatherCapability
+from app.capabilities.finance import FinanceCapability
+from app.capabilities.news import NewsCapability
+from app.capabilities.currency import CurrencyCapability
+from app.capabilities.geocoding import GeocodingCapability
+from app.capabilities.url_fetch import UrlFetchCapability
+from app.capabilities.translation import TranslationCapability
+
+from app.agents.tools.weather_tools import GetCurrentWeatherTool, GetWeatherForecastTool
+from app.agents.tools.finance_tools import GetStockQuoteTool, GetHistoricalPricesTool
+from app.agents.tools.news_tools import GetLatestNewsTool, SearchNewsTool
+from app.agents.tools.currency_tools import ConvertCurrencyTool, GetExchangeRatesTool
+from app.agents.tools.calculator_tools import CalculateTool
+from app.agents.tools.datetime_tools import GetCurrentTimeTool, GetDateInfoTool
+from app.agents.tools.geocoding_tools import GeocodeAddressTool, ReverseGeocodeTool
+from app.agents.tools.url_fetch_tools import FetchWebpageTool
+from app.agents.tools.translation_tools import TranslateTextTool, DetectLanguageTool
+from app.agents.tools.chart_tools import GenerateChartTool
+from app.agents.tools.web_search_tools import WebSearchTool
 
 from app.core.config import Settings
 from app.harness.guardrails import GuardrailEngine
@@ -98,6 +136,7 @@ class AppContainer:
             self.retrieval.embed_model,
             self.trace,
             self.persistence,
+            runtime_config=self.runtime_config,
         )
         self.ingestion = RagIngestionService(
             settings,
@@ -134,6 +173,7 @@ class AppContainer:
             self.persistence,
             self.semantic_cache,
             knowledge_capability=self.knowledge_capability,
+            runtime_config=self.runtime_config,
         )
         self.query_orchestrator = QueryWorkflowOrchestrator(
             settings,
@@ -157,8 +197,79 @@ class AppContainer:
         self.artifact_capability = self.local_artifact_capability
         self.local_database_capability = build_database_capability_from_provider(settings=settings, provider_name='sqlite_local')
         self.database_capability = self.local_database_capability
+
+        # ── 外部数据服务 Capability ────────────
+        self.weather_capability = WeatherCapability(api_key=settings.weather_api_key or '')
+        self.finance_capability = FinanceCapability()
+        self.news_capability = NewsCapability(api_key=settings.news_api_key or '')
+        self.currency_capability = CurrencyCapability()
+        self.geocoding_capability = GeocodingCapability()
+        self.url_fetch_capability = UrlFetchCapability()
+        self.translation_capability = TranslationCapability()
+        self.external_services: dict[str, Any] = {
+            'weather': self.weather_capability,
+            'finance': self.finance_capability,
+            'news': self.news_capability,
+            'currency': self.currency_capability,
+            'geocoding': self.geocoding_capability,
+            'url_fetch': self.url_fetch_capability,
+            'translation': self.translation_capability,
+        }
+        # ───────────────────────────────────────
+
         self.local_sandbox_engine = ToolSandbox()
         self.sandbox_engine = ToolSandbox(settings)
+
+        # ── Agent 平台新服务 ───────────────────
+        self.config_store = ConfigStore(
+            db_path=settings.resolved_data_dir / "app.sqlite3",
+        )
+        self.session_manager = SessionManager()
+        self.mcp_manager = McpManager()
+        self.auth_manager = AuthManager(config_store=self.config_store)
+        self.llm_router = LlmRouter(
+            config_store=self.config_store,
+            env_settings=settings,
+        )
+        self.llm_config_manager = LlmConfigManager(
+            config_store=self.config_store,
+            llm_router=self.llm_router,
+        )
+        self.skill_manager = SkillManager(config_store=self.config_store)
+        self.agent_def_manager = AgentDefManager(config_store=self.config_store)
+        self.prompt_manager = PromptManager(config_store=self.config_store)
+        self.system_settings_manager = SystemSettingsManager(
+            config_store=self.config_store,
+        )
+        self.runtime_config = RuntimeConfigReader(
+            env_settings=settings,
+            runtime_manager=self.system_settings_manager,
+        )
+        self.capability_registry = build_default_registry()
+        self.intent_matcher = IntentMatcher(
+            registry=self.capability_registry,
+            llm=self.llm,
+        )
+        self.plan_generator = PlanGenerator(
+            registry=self.capability_registry, llm=self.llm,
+        )
+        self.plan_executor = PlanExecutor()
+        self.agent_service = AgentService(
+            registry=self.capability_registry,
+            intent_matcher=self.intent_matcher,
+            session_manager=self.session_manager,
+            mcp_manager=self.mcp_manager,
+            plan_generator=self.plan_generator,
+            plan_executor=self.plan_executor,
+            task_orchestrator=None,
+            query_orchestrator=None,
+            repository=self.local_repository_capability,
+            database=self.local_database_capability,
+            llm=self.llm,
+            tool_registry=None,
+        )
+        # ───────────────────────────────────────
+
         self.task_memory = TaskMemory(self.state, self.persistence)
         self.task_planner = TaskPlanner()
         self.evidence_agent = EvidenceAgent(self.task_memory, self.trace)
@@ -192,6 +303,27 @@ class AppContainer:
             DraftReportTool(),
             ReviewReportTool(),
             FinalizeReportTool(),
+            ShellCommandTool(),
+            RepositoryCommandTool(),
+            # ── 外部数据服务工具 ──
+            GetCurrentWeatherTool(),
+            GetWeatherForecastTool(),
+            GetStockQuoteTool(),
+            GetHistoricalPricesTool(),
+            GetLatestNewsTool(),
+            SearchNewsTool(),
+            ConvertCurrencyTool(),
+            GetExchangeRatesTool(),
+            CalculateTool(),
+            GetCurrentTimeTool(),
+            GetDateInfoTool(),
+            GeocodeAddressTool(),
+            ReverseGeocodeTool(),
+            FetchWebpageTool(),
+            TranslateTextTool(),
+            DetectLanguageTool(),
+            GenerateChartTool(),
+            WebSearchTool(),
         ):
             self.task_tool_registry.register(cast(AgentTool, tool))
         self.guardrail_engine = GuardrailEngine(self.task_tool_registry)
@@ -212,7 +344,13 @@ class AppContainer:
             knowledge_capability=self.knowledge_capability,
             rag_facade=self.rag_facade,
             model_router=self.model_router,
+            services=self.external_services,
         )
+        # 将 orchestrator 注入 AgentService
+        self.agent_service._task_orchestrator = self.task_orchestrator
+        if self.query_orchestrator:
+            self.agent_service._query_orchestrator = self.query_orchestrator
+
         self.agent_runtime = AgentRuntime(self.task_orchestrator, self.task_memory, self.trace)
         self.task_worker = TaskWorker(
             self.task_memory,

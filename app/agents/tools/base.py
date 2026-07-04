@@ -124,6 +124,7 @@ class ToolContext:
     api_contract: ApiContractCapability | None = None
     artifact: ArtifactCapability | None = None
     database: DatabaseCapability | None = None
+    services: dict[str, Any] | None = None
     task_id: str | None = None
     step_name: str | None = None
     tool_call_id: str | None = None

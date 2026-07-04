@@ -43,6 +43,15 @@ _BUILTIN_TASK_SKILL_SPECS: dict[str, BuiltinTaskSkillSpec] = {
         artifact_type='document_summary_report',
         artifact_title='文档摘要报告',
     ),
+    'chat': BuiltinTaskSkillSpec(
+        task_type='chat',
+        skill_name='chat',
+        display_name='通用对话',
+        output_label='对话结果',
+        artifact_type='chat_result',
+        artifact_title='对话记录',
+        plan_kind='chat',
+    ),
 }
 
 

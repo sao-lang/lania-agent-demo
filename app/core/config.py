@@ -106,6 +106,13 @@ class Settings(BaseSettings):
         default=True,
         alias='KNOWLEDGE_CAPABILITY_ALLOW_LOCAL_FALLBACK',
     )
+    # 外部数据服务 API 密钥。
+    # 这部分密钥用于天气、新闻、翻译等外部 API 调用，均非必需——系统会在无密钥时
+    # 尝试使用免费/公开接口（如 DuckDuckGo、Nominatim、Frankfurter 等）。
+    weather_api_key: str = Field(default='', alias='WEATHER_API_KEY')
+    news_api_key: str = Field(default='', alias='NEWS_API_KEY')
+    translation_api_key: str = Field(default='', alias='TRANSLATION_API_KEY')
+
     sandbox_executor_provider: str = Field(default='local_process', alias='SANDBOX_EXECUTOR_PROVIDER')
     sandbox_executor_base_url: str | None = Field(default=None, alias='SANDBOX_EXECUTOR_BASE_URL')
     sandbox_executor_timeout_seconds: float = Field(default=15.0, alias='SANDBOX_EXECUTOR_TIMEOUT_SECONDS')
@@ -123,6 +130,17 @@ class Settings(BaseSettings):
         alias='REMOTE_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_SECONDS',
     )
     policy_config_path: Path | None = Field(default=None, alias='POLICY_CONFIG_PATH')
+
+    # Agent 平台相关配置。
+    enable_agent_api: bool = Field(default=True, alias='ENABLE_AGENT_API')
+    default_agent_mode: str = Field(default='chat', alias='DEFAULT_AGENT_MODE')
+    default_capability: str = Field(default='chat', alias='DEFAULT_CAPABILITY')
+    enable_mcp_server: bool = Field(default=True, alias='ENABLE_MCP_SERVER')
+    mcp_server_path: str = Field(default='/mcp', alias='MCP_SERVER_PATH')
+
+    # 认证相关配置。
+    enable_auth: bool = Field(default=False, alias='ENABLE_AUTH')
+    auth_default_api_key: str = Field(default='dev-key-123', alias='AUTH_DEFAULT_API_KEY')
 
     @property
     def resolved_data_dir(self) -> Path:

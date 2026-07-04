@@ -19,6 +19,7 @@ from app.core.config import Settings
 from app.rag.observability import TraceRecorder
 from app.services.sqlite_store import SQLiteStateStore
 from app.services.state import InMemoryState
+from app.services.system_settings import RuntimeConfigReader
 from app.types import MetadataFilters, SemanticCacheRecord
 
 
@@ -32,6 +33,7 @@ class SemanticCacheService:
         embed_model: Any,
         trace: TraceRecorder,
         persistence: SQLiteStateStore | None = None,
+        runtime_config: RuntimeConfigReader | None = None,
     ) -> None:
         """初始化语义缓存服务。
 
@@ -41,13 +43,21 @@ class SemanticCacheService:
             embed_model: 底层 embedding 模型，用于计算问题向量。
             trace: 链路追踪记录器，用于记录缓存命中与失效事件。
             persistence: 可选持久化存储，用于同步缓存记录。
+            runtime_config: 运行时配置，优先于 settings。
         """
         self.settings = settings
         self.state = state
         self.embed_model = embed_model
         self.trace = trace
         self.persistence = persistence
+        self._runtime_config = runtime_config
         self._lock = RLock()
+
+    def _cache_enabled(self) -> bool:
+        """检查缓存是否启用，优先使用运行时配置。"""
+        if self._runtime_config is not None:
+            return self._runtime_config.enable_semantic_cache
+        return self._cache_enabled()
 
     def lookup(
         self,
@@ -73,7 +83,7 @@ class SemanticCacheService:
             第一项为命中的缓存记录，第二项为查找过程的统计信息。
         """
         info = {
-            'enabled': self.settings.enable_semantic_cache,
+            'enabled': self._cache_enabled(),
             'collection_name': collection_name,
             'mode': mode,
             'hit': False,
@@ -83,7 +93,7 @@ class SemanticCacheService:
             'reason': '',
         }
         normalized_question = self._normalize_question(question)
-        if not self.settings.enable_semantic_cache:
+        if not self._cache_enabled():
             info['reason'] = 'disabled'
             self.trace.record('semantic_cache_lookup', info)
             return None, info
@@ -210,7 +220,7 @@ class SemanticCacheService:
         Returns:
             实际写入的缓存记录；未写入时返回 `None`。
         """
-        if not self.settings.enable_semantic_cache:
+        if not self._cache_enabled():
             return None
 
         normalized_question = self._normalize_question(question)
@@ -326,7 +336,7 @@ class SemanticCacheService:
             collections = sorted({entry['collection_name'] for entry in self.state.semantic_cache.values()})
             total_hits = sum(int(entry.get('hit_count', 0)) for entry in self.state.semantic_cache.values())
         return {
-            'enabled_by_default': self.settings.enable_semantic_cache,
+            'enabled_by_default': self._cache_enabled(),
             'similarity_threshold': float(self.settings.semantic_cache_similarity_threshold),
             'ttl_seconds': int(self.settings.semantic_cache_ttl_seconds),
             'max_entries_per_collection': int(self.settings.semantic_cache_max_entries_per_collection),

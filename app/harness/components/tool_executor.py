@@ -46,6 +46,7 @@ class ExecutionRuntimeDependencies:
     artifact: Any
     database: Any
     model_router: Any
+    services: dict[str, Any] | None = None
 
 
 @dataclass
@@ -228,6 +229,7 @@ class ToolExecutor:
             api_contract=self.dependencies.api_contract,
             artifact=self.dependencies.artifact,
             database=self.dependencies.database,
+            services=self.dependencies.services,
             task_id=self.owner_id_getter(workflow_state),
             step_name=self.owner_step_getter(workflow_state),
             tool_call_id=tool_call_id,

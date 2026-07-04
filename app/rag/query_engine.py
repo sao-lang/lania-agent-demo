@@ -32,6 +32,7 @@ from app.models.session import SessionDetail, SessionMessage, SessionSummaryItem
 from app.rag.llamaindex_components import build_llm, build_metadata_filters, build_vector_store
 from app.rag.observability import TraceRecorder
 from app.rag.retrieval import RagRetrievalService
+from app.services.system_settings import RuntimeConfigReader
 from app.services.answer_service import AnswerService
 from app.services.query_preprocess_service import QueryPreprocessService
 from app.services.semantic_cache import SemanticCacheService
@@ -62,6 +63,7 @@ class RagQueryEngine(QueryEngineStreamingMixin, QueryEnginePolicyCacheMixin, Que
         persistence: SQLiteStateStore | None = None,
         semantic_cache: SemanticCacheService | None = None,
         knowledge_capability: KnowledgeCapability | None = None,
+        runtime_config: RuntimeConfigReader | None = None,
     ) -> None:
         """初始化查询引擎和可选的 LLM 运行时。"""
         self.settings = settings
@@ -72,8 +74,15 @@ class RagQueryEngine(QueryEngineStreamingMixin, QueryEnginePolicyCacheMixin, Que
         self.semantic_cache = semantic_cache
         self.llm = build_llm(settings)
         self.model_router = ModelRouter()
-        self.preprocess_service = QueryPreprocessService(settings, retrieval_service, trace, self.llm)
-        self.answer_service = AnswerService(settings, trace, self.preprocess_service, self.llm)
+        self._runtime_config = runtime_config
+        self.preprocess_service = QueryPreprocessService(
+            settings, retrieval_service, trace, self.llm,
+            runtime_config=runtime_config,
+        )
+        self.answer_service = AnswerService(
+            settings, trace, self.preprocess_service, self.llm,
+            runtime_config=runtime_config,
+        )
         self.knowledge_capability = knowledge_capability or build_knowledge_capability(
             settings=settings,
             state=state,

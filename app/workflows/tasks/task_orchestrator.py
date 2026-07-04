@@ -66,6 +66,7 @@ class TaskWorkflowOrchestrator:
         persistence: SQLiteStateStore | None = None,
         skill_registry: TaskSkillRegistry | None = None,
         model_router: ModelRouter | None = None,
+        services: dict[str, Any] | None = None,
     ) -> None:
         """初始化任务工作流编排器。
 
@@ -107,6 +108,7 @@ class TaskWorkflowOrchestrator:
         self.evaluation_harness = evaluation_harness or EvaluationHarness(memory, trace, settings, self.policy_engine)
         self.react_runtime = react_runtime or BoundedLocalReActRuntime()
         self.rag_facade = rag_facade or (getattr(execution_harness, 'rag', None) if execution_harness is not None else None)
+        self.services = services or {}
         self.execution_harness = execution_harness or ExecutionHarness(
             registry,
             memory,
@@ -121,6 +123,7 @@ class TaskWorkflowOrchestrator:
             guardrail_engine=self.guardrail_engine,
             policy_engine=self.policy_engine,
             model_router=self.model_router,
+            services=self.services,
         )
         if self.knowledge_capability is None:
             self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)

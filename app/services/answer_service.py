@@ -17,6 +17,7 @@ from app.models.query import CitationItem, QueryRequest
 from app.rag.observability import TraceRecorder
 from app.rag.prompting import build_corrective_check_prompt, build_corrective_rewrite_prompt, build_qa_prompt
 from app.services.query_preprocess_service import QueryPreprocessService
+from app.services.system_settings import RuntimeConfigReader
 from app.types import SSEEvent
 
 
@@ -33,6 +34,7 @@ class AnswerService:
         trace: TraceRecorder,
         preprocess_service: QueryPreprocessService,
         llm: Any | None = None,
+        runtime_config: RuntimeConfigReader | None = None,
     ) -> None:
         """初始化回答生成服务。
 
@@ -41,11 +43,13 @@ class AnswerService:
             trace: 链路追踪记录器，用于记录回退和纠偏事件。
             preprocess_service: 查询预处理服务，负责脱敏等公共能力。
             llm: 可选的大模型实例；为空时退化为本地兜底回答。
+            runtime_config: 运行时配置，优先于 settings。
         """
         self.settings = settings
         self.trace = trace
         self.preprocess_service = preprocess_service
         self.llm = llm
+        self._runtime_config = runtime_config
 
     def build_qa_prompt(self, question: str, contexts: list[str], use_guardrails: bool = False) -> str:
         """构造回答 Prompt。
@@ -335,6 +339,8 @@ class AnswerService:
         """
 
         if payload.use_context_compression is None:
+            if self._runtime_config is not None:
+                return self._runtime_config.enable_context_compression
             return self.settings.enable_context_compression
         return payload.use_context_compression
 

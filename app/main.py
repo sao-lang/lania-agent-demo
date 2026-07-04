@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.container import build_container
 from app.core.config import get_settings
+from app.core.auth import AuthMiddleware
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 
@@ -56,6 +57,10 @@ def create_app() -> FastAPI:
     )
     app.state.container = container
     register_exception_handlers(app)
+
+    # 注册认证中间件（开发环境可通过配置关闭）
+    if settings.enable_auth:
+        app.add_middleware(AuthMiddleware)
 
     @app.get("/", tags=["root"])
     async def root() -> dict[str, str]:

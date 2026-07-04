@@ -20,6 +20,15 @@ from app.api.v1.endpoints.repository import router as repository_router
 from app.api.v1.endpoints.sandbox import router as sandbox_router
 from app.api.v1.endpoints.sessions import router as sessions_router
 from app.api.v1.endpoints.tasks import router as tasks_router
+from app.api.v1.endpoints.agent import router as agent_router
+from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.capabilities import router as capabilities_router
+from app.api.v1.endpoints.admin_llm import router as admin_llm_router
+from app.api.v1.endpoints.admin_skills import router as admin_skills_router
+from app.api.v1.endpoints.admin_agents import router as admin_agents_router
+from app.api.v1.endpoints.admin_prompts import router as admin_prompts_router
+from app.api.v1.endpoints.admin_mcp import router as admin_mcp_router
+from app.api.v1.endpoints.admin_settings import router as admin_settings_router
 
 api_router = APIRouter()
 # 所有对外接口统一在这里完成分组装配，便于追踪 API 暴露面、前缀和标签组织方式。
@@ -37,3 +46,12 @@ api_router.include_router(sessions_router, tags=['sessions'])
 api_router.include_router(tasks_router, tags=['tasks'])
 api_router.include_router(feedback_router, tags=['feedback'])
 api_router.include_router(eval_router, prefix='/eval', tags=['evaluation'])
+api_router.include_router(agent_router, tags=['agent'])
+api_router.include_router(capabilities_router, tags=['capabilities'])
+api_router.include_router(auth_router, tags=['auth'])
+api_router.include_router(admin_llm_router, tags=['admin'])
+api_router.include_router(admin_skills_router, tags=['admin'])
+api_router.include_router(admin_agents_router, tags=['admin'])
+api_router.include_router(admin_prompts_router, tags=['admin'])
+api_router.include_router(admin_mcp_router, tags=['admin'])
+api_router.include_router(admin_settings_router, tags=['admin'])
