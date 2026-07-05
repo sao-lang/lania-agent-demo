@@ -4,9 +4,8 @@
 运行时实现复用。该文件只负责统一导出，不承载实际执行逻辑。
 """
 
-from .kernel import HarnessKernel, HarnessResult, HarnessState
+from .kernel import HarnessKernel, HarnessResult
 from .recipe import BaseRecipe, HarnessRecipe
-from .runtime_context import RuntimeContext
 from .stage import BaseStage, HarnessStage
 
 __all__ = [
@@ -16,6 +15,4 @@ __all__ = [
     'HarnessRecipe',
     'HarnessResult',
     'HarnessStage',
-    'HarnessState',
-    'RuntimeContext',
 ]

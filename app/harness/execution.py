@@ -97,9 +97,11 @@ class ExecutionHarness:
         self.policy_engine = policy_engine or PolicyEngine()
         self.sandbox_engine = sandbox_engine or ToolSandbox()
         self.model_router = model_router or ModelRouter()
-        # 初始化 EventBus 并注册默认 trace hook
-        self.event_bus = event_bus or EventBus()
-        self.event_bus.register(TraceHook(trace=self.trace))
+        # 使用外部传入的 event_bus，或创建新的并注册默认 trace hook
+        self.event_bus = event_bus
+        if self.event_bus is None:
+            self.event_bus = EventBus()
+            self.event_bus.register(TraceHook(trace=self.trace))
         self.hooks = ExecutionHooks(
             memory=self.memory, trace=self.trace, event_bus=self.event_bus
         )

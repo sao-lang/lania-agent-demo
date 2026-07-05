@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     task_worker_max_workers: int = Field(default=1, alias='TASK_WORKER_MAX_WORKERS')
     enable_task_llm_analysis: bool = Field(default=True, alias='ENABLE_TASK_LLM_ANALYSIS')
     enable_task_llm_review: bool = Field(default=True, alias='ENABLE_TASK_LLM_REVIEW')
+    # ── 记忆系统 (Phase 6) ─────────────────────────────────────────────────
+    memory_max_records_per_task: int = Field(default=200, alias='MEMORY_MAX_RECORDS_PER_TASK')
+    memory_enable_semantic: bool = Field(default=True, alias='MEMORY_ENABLE_SEMANTIC')
+    memory_enable_profile: bool = Field(default=True, alias='MEMORY_ENABLE_PROFILE')
+    memory_auto_promote_interval_minutes: int = Field(default=60, alias='MEMORY_AUTO_PROMOTE_INTERVAL_MINUTES')
+    session_max_history: int = Field(default=100, alias='SESSION_MAX_HISTORY')
     database_capability_provider: str = Field(default='sqlite_local', alias='DATABASE_CAPABILITY_PROVIDER')
     knowledge_capability_provider: str = Field(default='default', alias='KNOWLEDGE_CAPABILITY_PROVIDER')
     knowledge_capability_base_url: str | None = Field(default=None, alias='KNOWLEDGE_CAPABILITY_BASE_URL')

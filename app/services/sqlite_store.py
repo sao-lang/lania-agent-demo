@@ -93,9 +93,41 @@ class SQLiteStateStore:
         """写入或更新单个会话。"""
         self._upsert('sessions', 'session_id', session_id, record)
 
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        """读取单条会话记录。"""
+        return self._load_single('sessions', 'session_id', session_id)
+
     def delete_session(self, session_id: str) -> None:
         """删除单个会话。"""
         self._delete('sessions', 'session_id', session_id)
+
+    # ── user_profiles ──────────────────────────────────────────────────────────
+
+    def upsert_user_profile(self, user_id: str, record: Mapping[str, Any]) -> None:
+        """写入或更新用户画像。"""
+        self._upsert('user_profiles', 'user_id', user_id, record)
+
+    def get_user_profile(self, user_id: str) -> dict[str, Any] | None:
+        """读取单条用户画像。"""
+        return self._load_single('user_profiles', 'user_id', user_id)
+
+    def delete_user_profile(self, user_id: str) -> None:
+        """删除用户画像。"""
+        self._delete('user_profiles', 'user_id', user_id)
+
+    # ── semantic_memory ────────────────────────────────────────────────────────
+
+    def upsert_semantic_memory(self, memory_id: str, record: Mapping[str, Any]) -> None:
+        """写入或更新语义记忆记录。"""
+        self._upsert('semantic_memory', 'memory_id', memory_id, record)
+
+    def get_semantic_memory(self, memory_id: str) -> dict[str, Any] | None:
+        """读取单条语义记忆记录。"""
+        return self._load_single('semantic_memory', 'memory_id', memory_id)
+
+    def delete_semantic_memory(self, memory_id: str) -> None:
+        """删除语义记忆记录。"""
+        self._delete('semantic_memory', 'memory_id', memory_id)
 
     def upsert_eval_task(self, record: Mapping[str, Any]) -> None:
         """写入或更新单个评测任务。"""
@@ -445,6 +477,22 @@ class SQLiteStateStore:
                 '''
                 CREATE TABLE IF NOT EXISTS policy_profiles (
                     profile_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS semantic_memory (
+                    memory_id TEXT PRIMARY KEY,
                     payload TEXT NOT NULL
                 )
                 '''

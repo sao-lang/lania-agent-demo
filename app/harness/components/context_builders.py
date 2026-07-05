@@ -120,6 +120,19 @@ class TaskContextBuilder:
             'plan_goal': plan.goal if plan is not None else None,
             'exit_criteria_failures': list(workflow_state.get('exit_criteria_failures') or []),
         }
+
+        # ★ Phase 5：注入 semantic 记忆
+        semantic_records = self.memory.query_memory_records(
+            task.task_id,
+            scope='semantic',
+            trust_level='verified',
+            limit=20,
+        )
+        if semantic_records:
+            memory_data['semantic'] = [
+                {'summary': r.summary, 'kind': r.kind, 'trust_level': r.trust_level}
+                for r in semantic_records
+            ]
         compressed_memory = self.compression_engine.compress_memory(memory_data['task_memory'], policy)
         memory_data['task_memory'] = compressed_memory
         self.budget_engine.record_usage(ContextSourceType.MEMORY, memory_data)
@@ -159,6 +172,12 @@ class TaskContextBuilder:
             memory_slice=enforced_context['memory_slice'],
             tool_options=tool_options,
             token_budget=self.budget_engine.get_total_budget(),
+            source_summary={
+                'evidence_slice': f'rag_retrieve_evidence/{task.task_id}',
+                'state_slice': f'task.state/{resolved_step_id}',
+                'memory_slice': f'task_memory/{len(memory_data.get("task_memory", []))}_entries',
+                'semantic_memory': f'semantic_memory/{len(semantic_records)}_records',
+            } if semantic_records else None,
         )
 
         optimization_info = {
@@ -233,9 +252,14 @@ class TaskContextBuilder:
 class QueryContextBuilder:
     """构建 query/chat runtime 使用的上下文包。"""
 
-    def __init__(self, serializer: ContextValueSerializer | None = None) -> None:
+    def __init__(
+        self,
+        task_memory: TaskMemory | None = None,
+        serializer: ContextValueSerializer | None = None,
+    ) -> None:
         """初始化 query 上下文构建器。"""
 
+        self.task_memory = task_memory
         self.serializer = serializer or ContextValueSerializer()
 
     def build_query_context(self, workflow_state: dict[str, Any], step_spec: StepSpec) -> ContextBundle:
@@ -264,6 +288,24 @@ class QueryContextBuilder:
             'missing_aspects': list(corrective_info.get('missing_aspects') or []),
             'risk': corrective_info.get('risk'),
         }
+
+        # ★ Phase 5：注入 semantic 记忆
+        semantic_records: list[dict[str, Any]] = []
+        if self.task_memory:
+            task_id = workflow_state.get('task_id') or ''
+            if task_id:
+                records = self.task_memory.query_memory_records(
+                    task_id,
+                    scope='semantic',
+                    trust_level='verified',
+                    limit=10,
+                )
+                semantic_records = [
+                    {'summary': r.summary, 'kind': r.kind, 'trust_level': r.trust_level}
+                    for r in records
+                ]
+                if semantic_records:
+                    memory_slice['semantic'] = semantic_records
         artifact_slice: dict[str, Any] | None = None
         if workflow_state.get('answer') or workflow_state.get('raw_answer'):
             artifact_slice = {
@@ -280,4 +322,7 @@ class QueryContextBuilder:
             memory_slice=memory_slice,
             tool_options=list(step_spec.allowed_tools),
             token_budget=max(1, int(getattr(request, 'top_k', 0) or 0) * 512),
+            source_summary={
+                'semantic_memory': f'semantic_memory/{len(semantic_records)}_records',
+            } if semantic_records else None,
         )

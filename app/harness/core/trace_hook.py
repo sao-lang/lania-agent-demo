@@ -55,6 +55,9 @@ class MemoryHook(RuntimeHook):
 
     通常注册为 on_stage_completed / on_tool_execution 等事件，
     自动将运行时状态摘要写入任务记忆。
+
+    同时在 AFTER_STAGE / STAGE_FAILED / AFTER_REACT_TURN 事件时清理
+    working 记忆，避免短期记忆膨胀。
     """
 
     def __init__(self, memory: Any, name: str = 'memory_hook') -> None:
@@ -66,7 +69,7 @@ class MemoryHook(RuntimeHook):
         return self._name
 
     def handle(self, event: EventPayload) -> None:
-        """将事件摘要写入任务记忆。"""
+        """将事件摘要写入任务记忆，并在适当时机清理 working 记忆。"""
         ws = event.workflow_state or {}
         task = ws.get('task')
         if task is None:
@@ -91,3 +94,28 @@ class MemoryHook(RuntimeHook):
                 'metadata': event.metadata,
             },
         )
+
+        self._clear_working_memory_on_event(event, task_id)
+
+    def _clear_working_memory_on_event(self, event: EventPayload, task_id: str) -> None:
+        """在特定事件发生时清理 working 记忆。"""
+        from app.harness.core.hooks import HookEvent
+
+        if event.event in (
+            HookEvent.AFTER_STAGE,
+            HookEvent.STAGE_FAILED,
+            HookEvent.AFTER_REACT_TURN,
+        ):
+            self._clear_working_memory(task_id)
+
+    def _clear_working_memory(self, task_id: str) -> None:
+        """清理指定任务的 working 记忆。"""
+        task = self._memory.get_task(task_id)
+        if task is None:
+            return
+        before = len(task.memory_records)
+        task.memory_records = [
+            r for r in task.memory_records if r.scope != 'working'
+        ]
+        if len(task.memory_records) != before:
+            self._memory.upsert_task(task)

@@ -65,6 +65,9 @@ from app.agents.tools.chart_tools import GenerateChartTool
 from app.agents.tools.web_search_tools import WebSearchTool
 
 from app.core.config import Settings
+from app.harness.core.hooks import EventBus
+from app.harness.core.trace_hook import MemoryHook, TraceHook
+from app.harness.execution import ExecutionHarness
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.policy import PolicyEngine
@@ -112,6 +115,8 @@ class AppContainer:
         # 先把持久化状态恢复到内存，再初始化依赖这些状态的上层服务。
         self.persistence.load_into(self.state)
         self.trace = TraceRecorder()
+        self.event_bus = EventBus()
+        self.event_bus.register(TraceHook(trace=self.trace))
         self.llm = build_llm(settings)
         self.model_router = ModelRouter()
         # 底层基础能力先初始化，再按依赖关系组装上层服务。
@@ -183,6 +188,7 @@ class AppContainer:
             self.persistence,
             knowledge_capability=self.knowledge_capability,
             rag_facade=self.rag_facade,
+            event_bus=self.event_bus,
         )
         self.local_repository_capability = build_repository_capability()
         self.repository_capability = self.local_repository_capability
@@ -224,7 +230,6 @@ class AppContainer:
         self.config_store = ConfigStore(
             db_path=settings.resolved_data_dir / "app.sqlite3",
         )
-        self.session_manager = SessionManager()
         self.mcp_manager = McpManager()
         self.auth_manager = AuthManager(config_store=self.config_store)
         self.llm_router = LlmRouter(
@@ -254,6 +259,17 @@ class AppContainer:
             registry=self.capability_registry, llm=self.llm,
         )
         self.plan_executor = PlanExecutor()
+        # ───────────────────────────────────────
+
+        self.task_memory = TaskMemory(self.state, self.persistence)
+        self.event_bus.register(MemoryHook(memory=self.task_memory))
+
+        # SessionManager 依赖 task_memory，在 task_memory 之后初始化
+        self.session_manager = SessionManager(
+            state=self.state,
+            persistence=self.persistence,
+            task_memory=self.task_memory,
+        )
         self.agent_service = AgentService(
             registry=self.capability_registry,
             intent_matcher=self.intent_matcher,
@@ -268,9 +284,6 @@ class AppContainer:
             llm=self.llm,
             tool_registry=None,
         )
-        # ───────────────────────────────────────
-
-        self.task_memory = TaskMemory(self.state, self.persistence)
         self.task_planner = TaskPlanner()
         self.evidence_agent = EvidenceAgent(self.task_memory, self.trace)
         self.reporting_agent = ReportingAgent(self.task_memory, self.trace)
@@ -345,6 +358,7 @@ class AppContainer:
             rag_facade=self.rag_facade,
             model_router=self.model_router,
             services=self.external_services,
+            event_bus=self.event_bus,
         )
         # 将 orchestrator 注入 AgentService
         self.agent_service._task_orchestrator = self.task_orchestrator

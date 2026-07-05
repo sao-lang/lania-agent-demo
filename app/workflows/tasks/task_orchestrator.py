@@ -18,6 +18,9 @@ from app.core.config import Settings
 from app.harness.context import ContextHarness
 from app.harness.evaluation import EvaluationHarness
 from app.harness.execution import ExecutionHarness
+from app.harness.core.hooks import EventBus
+from app.harness.core.kernel import HarnessKernel
+from app.services.memory_commit_gate import MemoryCommitGate
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.grounding import GroundingBundle
@@ -67,6 +70,7 @@ class TaskWorkflowOrchestrator:
         skill_registry: TaskSkillRegistry | None = None,
         model_router: ModelRouter | None = None,
         services: dict[str, Any] | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         """初始化任务工作流编排器。
 
@@ -124,6 +128,7 @@ class TaskWorkflowOrchestrator:
             policy_engine=self.policy_engine,
             model_router=self.model_router,
             services=self.services,
+            event_bus=event_bus,
         )
         if self.knowledge_capability is None:
             self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)
@@ -133,6 +138,8 @@ class TaskWorkflowOrchestrator:
         self._nodes: DocumentAnalysisNodes | None = None
         self._task_app: Any | None = None
         self.skill_registry = skill_registry or build_default_task_skill_registry()
+        # ★ 记忆融合点：MemoryCommitGate
+        self.memory_gate = MemoryCommitGate(memory)
 
     def run(self, task: TaskDetail) -> TaskResult:
         """执行任务工作流。
@@ -264,6 +271,94 @@ class TaskWorkflowOrchestrator:
         self._finalize_successful_task_state(result_state)
         return result_state
 
+    # ── HarnessKernel 集成（Phase 4） ──────────────────────────────────────────
+
+    def _build_ctx(self) -> dict[str, Any]:
+        """构建 HarnessKernel 运行时上下文。
+
+        将 orchestrator 持有的所有运行时依赖打包为 ctx dict，
+        供 Recipe Stage 通过 ctx.get() 访问。
+        """
+        return {
+            'execution_harness': self.execution_harness,
+            'context_harness': self.context_harness,
+            'evaluation_harness': self.evaluation_harness,
+            'guardrail_engine': self.guardrail_engine,
+            'policy_engine': self.policy_engine,
+            'planner': self.planner,
+            'llm': self.llm,
+            'task_memory': self.memory,
+            'memory_gate': self.memory_gate,
+            'trace': self.trace,
+            'settings': self.settings,
+        }
+
+    def _invoke_via_kernel(
+        self, state: dict[str, Any], *, initial_route: str = 'load_task'
+    ) -> dict[str, Any]:
+        """通过 HarnessKernel + Recipe 执行任务工作流。
+
+        这是 Phase 4 引入的替代路径，与 _invoke_workflow 并行存在。
+        在 Phase 4 验证完成后，将逐步替换 _invoke_workflow。
+
+        Args:
+            state: 初始状态字典（包含 task、request 等）。
+            initial_route: 初始路由节点名（支持 checkpoint 恢复）。
+
+        Returns:
+            工作流结束后的状态字典。
+        """
+        from app.harness.recipes.task_recipe import DocumentAnalysisRecipe, DocumentSummaryRecipe
+
+        request = state.get('request', {})
+        task_type = request.get('task_type', 'document_analysis')
+
+        recipe_class = DocumentSummaryRecipe if task_type == 'document_summary' else DocumentAnalysisRecipe
+        recipe = recipe_class()
+
+        initial_state = {
+            'task': state.get('task'),
+            'request': request,
+            'task_type': task_type,
+        }
+
+        kernel = HarnessKernel(event_bus=self.execution_harness.event_bus)
+        graph = kernel.build_graph(recipe)
+        ctx = self._build_ctx()
+        result = kernel.run(graph, initial_state, ctx)
+
+        if not result.completed:
+            raise RuntimeError(result.error or 'kernel execution failed')
+
+        result_state = result.state
+        result_state['graph_entry_route'] = None
+        self._finalize_successful_task_state(result_state)
+        return result_state
+
+    # ── 记忆融合点 ────────────────────────────────────────────────────────────
+
+    def _commit_memory(self, task_id: str) -> None:
+        """任务完成后自动晋升 run → semantic 记忆。
+
+        该方法是记忆融合的核心入口，在任务成功完成后调用。
+        """
+        try:
+            self.memory_gate.auto_promote(task_id)
+            promoted = self.memory_gate.commit_to_semantic(task_id)
+            self.memory_gate.resolve_conflicts(task_id)
+            if promoted:
+                self.trace.record(
+                    'memory_commit_completed',
+                    {
+                        'task_id': task_id,
+                        'promoted_count': len(promoted),
+                    },
+                )
+        except Exception:
+            pass  # 记忆提交失败不影响主流程
+
+    # ── 图构建与恢复 ──────────────────────────────────────────────────────────
+
     def _get_task_app(self) -> Any:
         """懒加载文档分析 workflow compiled graph。
 
@@ -372,6 +467,8 @@ class TaskWorkflowOrchestrator:
             )
         self.memory.upsert_task(latest_task)
         self._persist_task_run(latest_task)
+        # ★ 记忆融合点：任务完成后自动晋升 run → semantic
+        self._commit_memory(latest_task.task_id)
         state['task'] = latest_task
 
     def _checkpoint_after_step(self, state: dict[str, Any], step_id: str, next_route: str) -> dict[str, Any]:

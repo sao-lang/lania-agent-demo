@@ -23,6 +23,8 @@ from app.harness.context import ContextHarness
 from app.harness.execution import ExecutionHarness
 from app.harness.extensions.query.recovery import RecoveryManager
 from app.harness.extensions.query.reflection import ReflectionHarness
+from app.harness.core.hooks import EventBus
+from app.harness.core.kernel import HarnessKernel
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.models import ContextBundle
@@ -109,6 +111,7 @@ class QueryWorkflowOrchestrator:
         reflection_harness: ReflectionHarness | None = None,
         recovery_manager: RecoveryManager | None = None,
         model_router: ModelRouter | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         """初始化查询工作流编排器。
 
@@ -158,6 +161,7 @@ class QueryWorkflowOrchestrator:
             guardrail_engine=self.guardrail_engine,
             policy_engine=self.policy_engine,
             model_router=self.model_router,
+            event_bus=event_bus,
         )
         if self.knowledge_capability is None:
             self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)
@@ -562,6 +566,77 @@ class QueryWorkflowOrchestrator:
             if state is not None:
                 self._persist_query_run(state)
             raise QueryWorkflowExecutionError(str(exc), state) from exc
+
+    # ── HarnessKernel 集成（Phase 3） ──────────────────────────────────────────
+
+    def _build_ctx(self) -> dict[str, Any]:
+        """构建 HarnessKernel 运行时上下文。
+
+        将 orchestrator 持有的所有运行时依赖打包为 ctx dict，
+        供 Recipe Stage 通过 ctx.get() 访问。
+        """
+        return {
+            'runtime': self.query_runtime,
+            'guardrail_engine': self.guardrail_engine,
+            'policy_engine': self.policy_engine,
+            'execution_harness': self.execution_harness,
+            'context_harness': self.context_harness,
+            'reflection_harness': self.reflection_harness,
+            'react_runtime': self.react_runtime,
+            'trace': self.trace,
+            'settings': self.settings,
+        }
+
+    def _invoke_via_kernel(
+        self, payload: QueryRequest | ChatRequest, mode: str
+    ) -> dict[str, Any]:
+        """通过 HarnessKernel + Recipe 执行查询工作流。
+
+        这是 Phase 3 引入的替代路径，与 _invoke_workflow 并行存在。
+        在 Phase 3 验证完成后，将逐步替换 _invoke_workflow。
+
+        Args:
+            payload: 查询或会话请求对象。
+            mode: 当前工作流模式（query / chat / query_stream / chat_stream）。
+
+        Returns:
+            工作流结束后的状态字典。
+        """
+        from app.harness.recipes.query_recipe import ChatRecipe, QueryRecipe
+
+        question = getattr(payload, 'question', '') or ''
+        if hasattr(payload, 'messages') and payload.messages:
+            question = payload.messages[-1].content if hasattr(payload.messages[-1], 'content') else question
+
+        recipe_class = ChatRecipe if mode in ('chat', 'chat_stream') else QueryRecipe
+        recipe = recipe_class()
+
+        initial_state: dict[str, Any] = {
+            'request': payload,
+            'question': question,
+            'mode': mode,
+            'retry_count': 0,
+            'max_retry_count': (
+                max(0, int(self.settings.self_rag_max_retry_count))
+                if getattr(payload, 'use_corrective_rag', False) and self.settings.enable_self_rag_retry
+                else 0
+            ),
+        }
+
+        kernel = HarnessKernel(event_bus=self.execution_harness.event_bus)
+        graph = kernel.build_graph(recipe)
+        ctx = self._build_ctx()
+        result = kernel.run(graph, initial_state, ctx)
+
+        if not result.completed:
+            raise QueryWorkflowExecutionError(
+                result.error or 'kernel execution failed',
+                partial_state=result.state,
+            )
+
+        return result.state
+
+    # ── 恢复与回放 ────────────────────────────────────────────────────────────
 
     def replay_from_checkpoint(self, checkpoint: CheckpointRecord) -> QueryGraphState:
         """从指定 checkpoint 继续执行 query workflow。

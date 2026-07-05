@@ -28,7 +28,7 @@ class ContextHarness:
         self.settings = settings
         self.serializer = ContextValueSerializer()
         self.task_context_builder = TaskContextBuilder(memory=memory, settings=settings, serializer=self.serializer)
-        self.query_context_builder = QueryContextBuilder(serializer=self.serializer)
+        self.query_context_builder = QueryContextBuilder(task_memory=memory, serializer=self.serializer)
 
     def build_context(self, workflow_state: dict[str, Any], step_id: str | None = None) -> ContextBundle:
         """为当前步骤生成最小上下文切片。"""
