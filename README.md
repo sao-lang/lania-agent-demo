@@ -261,9 +261,9 @@ docs/                             # 项目文档
 | `chat` | 通用对话 | ✅ 现成 | LLM |
 | `document_analysis` | 文档深度分析 | ✅ 已有 | knowledge + repository |
 | `document_summary` | 文档摘要 | ✅ 已有 | knowledge |
-| `code_review` | 代码审查 | 📋 待实现 | repository + sandbox |
-| `data_analysis` | 数据分析 | 📋 待实现 | database + sandbox |
-| `web_research` | 联网研究 | 📋 待实现 | web_fetch + knowledge |
+| `code_review` | 代码审查 | ✅ 已实现 | repository |
+| `data_analysis` | 数据分析 | ✅ 已实现 | database |
+| `web_search` | 联网搜索 | ✅ 已实现 | httpx (DuckDuckGo) |
 
 ### Infrastructure（基础设施 = 用什么做）
 
@@ -274,8 +274,8 @@ docs/                             # 项目文档
 | `database` | SQLite 数据库查询 | data_analysis |
 | `api_contract` | API 契约发现 | 代码分析 |
 | `artifact` | 产物管理 | 所有任务 |
-| `sandbox_execute` | 沙盒命令执行 | code_review, data_analysis |
-| `web_fetch` | 网页抓取 | web_research |
+| `sandbox_execute` | 沙盒命令执行 | （预留） |
+| `web_fetch` | 网页抓取 | web_search |
 
 ---
 
