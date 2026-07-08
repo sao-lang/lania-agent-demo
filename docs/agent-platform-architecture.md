@@ -1,6 +1,6 @@
 # Lania Agent 平台架构设计
 
-> 版本: v6.0（Mode + Capability 模型）  
+> 版本: 当前（Mode + Capability 模型）  
 > 日期: 2026-07-04
 
 ---
@@ -39,7 +39,7 @@ Capability（能力 = 会做什么）
   document_summary   文档摘要
   code_review        代码审查
   data_analysis      数据分析
-  web_research       联网研究
+  web_search        联网搜索
   ...
 
 Infrastructure（基础设施 = 用什么做）
@@ -137,9 +137,9 @@ POST /api/v1/tasks              mode=chat   + capability=指定
 │  │  chat             → LLM 直接回答 (无 Workflow)              │   │
 │  │  document_analysis → DocumentAnalysisWorkflow + 子 Agent   │   │
 │  │  document_summary  → DocumentSummaryWorkflow                │   │
-│  │  code_review       → CodingReviewWorkflow (未来)            │   │
-│  │  data_analysis     → DataAnalysisWorkflow (未来)            │   │
-│  │  web_research      → WebResearchWorkflow (未来)             │   │
+│  │  code_review       → CodeReviewCapability (已实现)           │   │
+│  │  data_analysis     → DataAnalysisCapability (已实现)          │   │
+│  │  web_search        → WebSearchCapability (已实现)           │   │
 │  └─────────────────────────┬───────────────────────────────────┘   │
 │                            │                                       │
 │  ┌─────────────────────────┴───────────────────────────────────┐   │
@@ -247,9 +247,9 @@ PUT /api/v1/agent/session/{id}/mode
 | `chat` | 通用对话 | ✅ 现成 | 无（直接 LLM） | LLM |
 | `document_analysis` | 文档深度分析 | ✅ 已有 | DocumentAnalysisWorkflow | knowledge + repository |
 | `document_summary` | 文档摘要 | ✅ 已有 | DocumentSummaryWorkflow | knowledge |
-| `code_review` | 代码审查 | 📋 待实现 | CodingReviewWorkflow | repository + sandbox |
-| `data_analysis` | 数据分析 | 📋 待实现 | DataAnalysisWorkflow | database + sandbox |
-| `web_research` | 联网研究 | 📋 待实现 | WebResearchWorkflow | web_fetch + knowledge |
+| `code_review` | 代码审查 | ✅ 已实现 | CodeReviewCapability | repository |
+| `data_analysis` | 数据分析 | ✅ 已实现 | DataAnalysisCapability | database |
+| `web_search` | 联网搜索 | ✅ 已实现 | WebSearchCapability | httpx (DuckDuckGo) |
 
 ### 4.2 Capability 定义模型
 
@@ -309,7 +309,7 @@ class IntentMatcher:
             return CapabilityMatch("document_analysis", confidence=0.7)
 
         if any(kw in message for kw in ["搜索", "查一下", "网上"]):
-            return CapabilityMatch("web_research", confidence=0.8)
+            return CapabilityMatch("web_search", confidence=0.8)
 
         # 2. 默认: 通用对话
         return CapabilityMatch("chat", confidence=0.5)
@@ -364,12 +364,12 @@ POST   /capabilities/{name}/disable     # 禁用
 | `api_contract` | API 契约发现 | 代码分析 |
 | `artifact` | 产物管理 | 所有任务 |
 
-### 5.2 新增基础设施（待实现）
+### 5.2 预留基础设施（部分已实现）
 
-| 基础设施 | 说明 | 对应 Capability |
-|---------|------|----------------|
-| `sandbox_execute` | 沙盒命令执行 | code_review, data_analysis |
-| `web_fetch` | 网页抓取 | web_research |
+| 基础设施 | 说明 | 对应 Capability | 状态 |
+|---------|------|----------------|------|
+| `sandbox_execute` | 沙盒命令执行 | code_review, data_analysis | 🏗️ command_tools 已实现，非独立 Infra |
+| `web_fetch` | 网页抓取 | web_search | 🏗️ web_search 直接使用 httpx，未抽成独立 Infra |
 
 ---
 
@@ -1019,7 +1019,7 @@ lan agent config show
 
 ## 13. 实施路线
 
-### Phase 4 (2-3 周): 认证 + LLM 路由 + 系统配置
+### Phase 4 (2-3 周): 认证 + LLM 路由 + 系统配置 ✅ 已完成
 
 ```
 后端:
@@ -1037,37 +1037,31 @@ CLI:
 └── 验证: lan agent "分析..." → 自动识别 → 执行 → 输出
 ```
 
-### Phase 5 (2-3 周): Plan + Autopilot 模式
+### Phase 5 (2-3 周): Sandbox 执行 + Coding Agent ✅ 已完成
 
 ```
 后端:
-├── AgentService mode=plan 实现
-│   ├── PlanGenerator (生成计划)
-│   ├── PlanConfirmer (等待确认)
-│   └── PlanExecutor (按计划执行)
-├── AgentService mode=autopilot 实现
-│   ├── 自动循环
-│   └── 下一步询问
-└── 模式切换 API
-
-CLI:
-├── --plan / --autopilot 参数
-├── Plan 展示 (步骤列表 + 确认提示)
-└── /mode slash 命令
-
-Web:
-├── React 项目脚手架
-├── Chat 页 (模式选择 + 消息列表 + 时间线)
-└── Plan 卡片组件
+├── SandboxExecuteCapability (三层安全策略)
+│   ├── base.py: CommandSecurityPolicy / CommandExecutionRequest / Result
+│   ├── service.py: LocalSandboxExecuteCapability (subprocess 沙盒)
+│   └── 三级策略工厂: sandboxed / restricted / standard
+├── command_tools.py 重构
+│   ├── ShellCommandTool / RepositoryCommandTool 委托 sandbox_execute
+│   └── 网络隔离 (环境变量阻断 HTTP/HTTPS)
+├── CodingCapability (6 阶段工作流)
+│   ├── Plan → CollectCodeContext → RunAnalysis → Analyze → DraftReview → Finalize
+│   └── 实际执行 lint/静态分析 (pyflakes, mypy)
+├── coding_tools: ExtractCodeIssuesTool / RunCodeAnalysisTool
+└── AgentService 注册 CodingCapability 为 provider
 ```
 
-### Phase 6 (2-3 周): 新 Capability + 管理面
+### Phase 6 (2-3 周): 新 Capability + 管理面 🏗️ 部分完成（Capability 已实现，Web 前端待开始）
 
 ```
 后端:
 ├── code_review Capability (沙盒执行)
 ├── data_analysis Capability
-├── web_research Capability
+├── web_search Capability
 ├── 管理 API (LLM/Skill/Agent/Prompt/MCP/System)
 └── Capability 管理 API
 

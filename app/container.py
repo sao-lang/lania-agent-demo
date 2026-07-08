@@ -49,6 +49,7 @@ from app.capabilities.finance import FinanceCapability
 from app.capabilities.news import NewsCapability
 from app.capabilities.currency import CurrencyCapability
 from app.capabilities.geocoding import GeocodingCapability
+from app.capabilities.sandbox_execute import LocalSandboxExecuteCapability
 from app.capabilities.url_fetch import UrlFetchCapability
 from app.capabilities.translation import TranslationCapability
 
@@ -63,6 +64,7 @@ from app.agents.tools.url_fetch_tools import FetchWebpageTool
 from app.agents.tools.translation_tools import TranslateTextTool, DetectLanguageTool
 from app.agents.tools.chart_tools import GenerateChartTool
 from app.agents.tools.web_search_tools import WebSearchTool
+from app.agents.tools.coding_tools import ExtractCodeIssuesTool, RunCodeAnalysisTool
 
 from app.core.config import Settings
 from app.harness.core.hooks import EventBus
@@ -212,6 +214,7 @@ class AppContainer:
         self.geocoding_capability = GeocodingCapability()
         self.url_fetch_capability = UrlFetchCapability()
         self.translation_capability = TranslationCapability()
+        self.sandbox_execute_capability = LocalSandboxExecuteCapability(settings=settings)
         self.external_services: dict[str, Any] = {
             'weather': self.weather_capability,
             'finance': self.finance_capability,
@@ -220,6 +223,7 @@ class AppContainer:
             'geocoding': self.geocoding_capability,
             'url_fetch': self.url_fetch_capability,
             'translation': self.translation_capability,
+            'sandbox_execute': self.sandbox_execute_capability,
         }
         # ───────────────────────────────────────
 
@@ -337,6 +341,9 @@ class AppContainer:
             DetectLanguageTool(),
             GenerateChartTool(),
             WebSearchTool(),
+            # ── Coding Agent 工具 ──
+            ExtractCodeIssuesTool(),
+            RunCodeAnalysisTool(),
         ):
             self.task_tool_registry.register(cast(AgentTool, tool))
         self.guardrail_engine = GuardrailEngine(self.task_tool_registry)

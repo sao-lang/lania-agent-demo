@@ -133,6 +133,10 @@ class CapabilityRegistry:
         if any(kw in message for kw in ["数据", "统计", "图表", "趋势", "分析数据"]):
             matches.append(("data_analysis", 0.7))
 
+        # 代码助手 (coding)
+        if any(kw in message for kw in ["代码分析", "lint", "代码检查", "静态分析", "编码助手", "coding", "代码扫描", "质量检查"]):
+            matches.append(("coding", 0.85))
+
         # 按置信度降序
         matches.sort(key=lambda x: x[1], reverse=True)
         return matches
@@ -213,6 +217,19 @@ def build_default_capabilities() -> list[CapabilityDefinition]:
             workflow_type=None,
             requires=[],
             tools=[],
+            enabled=True,
+        ),
+        CapabilityDefinition(
+            name="coding",
+            display_name="代码助手",
+            description="对仓库代码进行自动化审查、lint 检查和 LLM 多维度分析，识别潜在问题并给出改进建议",
+            workflow_type="coding",
+            requires=["repository"],
+            tools=[
+                "list_repository_files", "read_repository_file",
+                "search_repository", "shell_command",
+                "extract_code_issues", "run_code_analysis",
+            ],
             enabled=True,
         ),
     ]

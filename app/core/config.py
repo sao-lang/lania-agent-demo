@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     news_api_key: str = Field(default='', alias='NEWS_API_KEY')
     translation_api_key: str = Field(default='', alias='TRANSLATION_API_KEY')
 
+    sandbox_executor_default_policy: str = Field(
+        default='sandboxed',
+        alias='SANDBOX_EXECUTOR_DEFAULT_POLICY',
+    )
     sandbox_executor_provider: str = Field(default='local_process', alias='SANDBOX_EXECUTOR_PROVIDER')
     sandbox_executor_base_url: str | None = Field(default=None, alias='SANDBOX_EXECUTOR_BASE_URL')
     sandbox_executor_timeout_seconds: float = Field(default=15.0, alias='SANDBOX_EXECUTOR_TIMEOUT_SECONDS')

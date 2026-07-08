@@ -14,6 +14,7 @@ from app.capabilities.chat import ChatCapability
 from app.capabilities.code_review import CodeReviewCapability
 from app.capabilities.data_analysis import DataAnalysisCapability
 from app.capabilities.web_search import WebSearchCapability
+from app.capabilities.coding import CodingCapability
 from app.models.agent import (
     AgentChatRequest,
     AgentCommandRequest,
@@ -77,6 +78,9 @@ class AgentService:
         )
         self._registry.register_provider(
             WebSearchCapability(llm=llm),
+        )
+        self._registry.register_provider(
+            CodingCapability(llm=llm),
         )
 
     # ── 公开接口 ──────────────────────────────

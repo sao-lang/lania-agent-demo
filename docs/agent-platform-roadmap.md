@@ -28,14 +28,14 @@
 | **已实现的任务类型** | `document_analysis`（文档分析）、`document_summary`（文档摘要） |
 | **Agent 类型** | EvidenceAgent、ReportingAgent、ReviewAgent、ContractAgent（均为文档分析领域） |
 | **工具** | 5 个 RAG 工具 + 分析/报告/仓库/契约/数据库/产物 工具 |
-| **沙盒** | `ToolSandbox` 框架完整，但 `command_tools.py` 是存根，无法真正执行命令 |
+| **沙盒** | `ToolSandbox` 框架完整，`command_tools.py` 已实现 Shell 命令执行 + 安全策略校验 |
 | **治理** | Guardrail / Policy / Sandbox / Budget 体系完整 |
 | **评测** | RAGAS / Benchmark / Baseline / 趋势分析 完整 |
 
 ### 1.2 核心问题
 
-1. **业务场景单一** — 只有文档分析一个完整的任务类型，Harness 架构的优势未释放
-2. **沙盒能力是存根** — `command_tools.py` 只定义了基类和模型，没有实际执行逻辑
+1. **业务场景偏少** — 文档分析之外，code_review / data_analysis / web_search 的 Capability 已实现，但缺少完整的 Workflow 级别任务类型
+2. **沙盒能力已可用** — `command_tools.py` 已实现，含命令白名单/黑名单/危险模式拦截
 3. **缺少"执行型"Agent** — 现有 Agent 都是"读"（检索、分析、报告），没有"写"（改代码、执行命令、生成图表）
 4. **没有前端** — 只有 API，无法直观展示 Agent 编排过程
 
