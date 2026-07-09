@@ -17,7 +17,7 @@ from app.agents.tools.defaults import build_runtime_rag_tools
 from app.agents.tools.registry import ToolRegistry
 from app.harness.context import ContextHarness
 from app.harness.execution import ExecutionHarness
-from app.harness.extensions.query.reflection import ReflectionHarness
+from app.harness.reflection import ReflectionHarness
 from app.harness.model_router import ModelRouter
 from app.harness.react_runtime import BoundedLocalReActRuntime
 from app.models.artifact import EvidencePack
@@ -110,7 +110,7 @@ class QueryWorkflowNodes:
         self,
         runtime_or_engine: QueryWorkflowRuntime | Any,
         trace: TraceRecorder,
-        knowledge_capability: Any | None = None,
+        capabilities: dict[str, Any] | None = None,
         context_harness: ContextHarness | None = None,
         execution_harness: ExecutionHarness | None = None,
         react_runtime: BoundedLocalReActRuntime | None = None,
@@ -125,10 +125,10 @@ class QueryWorkflowNodes:
         self.runtime = ensure_query_workflow_runtime(runtime_or_engine)
         self.trace = trace
         self.model_router = ModelRouter()
+        caps = capabilities or {}
         self.knowledge_capability = (
-            knowledge_capability
+            caps.get('knowledge')
             or getattr(self.runtime, 'knowledge_capability', None)
-            or getattr(execution_harness, 'knowledge', None)
         )
         registry = ToolRegistry()
         for tool in build_runtime_rag_tools():
@@ -144,14 +144,12 @@ class QueryWorkflowNodes:
             self.runtime.retrieval_service,
             getattr(self.runtime.retrieval_service, 'vector_store', None),
             self.runtime.llm,
-            knowledge=self.knowledge_capability,
+            capabilities=caps,
             guardrail_engine=None,
             policy_engine=None,
             model_router=self.model_router,
         )
-        if self.knowledge_capability is None:
-            self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)
-        self.rag_facade = getattr(self.execution_harness, 'rag', None) or RagFacade(self.knowledge_capability)
+        self.rag_facade = caps.get('rag') or RagFacade(self.knowledge_capability)
         self.react_runtime = react_runtime or BoundedLocalReActRuntime()
         self.reflection_harness = reflection_harness or ReflectionHarness()
 

@@ -15,24 +15,18 @@ from pydantic import BaseModel
 from app.agents.memory import TaskMemory
 from app.agents.tools.base import ToolExecutionError
 from app.agents.tools.registry import ToolRegistry
-from app.capabilities.api_contract import ApiContractCapability, build_api_contract_capability_from_provider
-from app.capabilities.artifact import ArtifactCapability, build_artifact_capability_from_provider
-from app.capabilities.database import DatabaseCapability, build_database_capability_from_provider
-from app.capabilities.knowledge import KnowledgeCapability, build_knowledge_capability
-from app.capabilities.repository import RepositoryCapability, build_repository_capability
 from app.core.config import Settings
 from app.harness.components.execution_hooks import ExecutionHooks
 from app.harness.components.execution_policy import ExecutionPolicyResolver
 from app.harness.components.fallback_handler import FallbackHandler
 from app.harness.components.tool_executor import ExecutionRuntimeDependencies, ToolExecutor
-from app.harness.core.hooks import EventBus
-from app.harness.core.trace_hook import TraceHook
+from app.harness.hooks import EventBus
+from app.harness.trace_hook import TraceHook
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.models import ContextBundle, ExecutionRuntimeSummary, ToolExecutionResult
 from app.harness.policy import PolicyEngine
 from app.harness.sandbox import ToolSandbox
-from app.rag.facade import RagFacade
 from app.rag.observability import TraceRecorder
 from app.services.state import InMemoryState
 
@@ -52,12 +46,7 @@ class ExecutionHarness:
         retrieval,
         vector_store,
         llm,
-        knowledge: KnowledgeCapability | None = None,
-        rag: RagFacade | None = None,
-        repository: RepositoryCapability | None = None,
-        api_contract: ApiContractCapability | None = None,
-        artifact: ArtifactCapability | None = None,
-        database: DatabaseCapability | None = None,
+        capabilities: dict[str, Any] | None = None,
         guardrail_engine: GuardrailEngine | None = None,
         policy_engine: PolicyEngine | None = None,
         sandbox_engine: ToolSandbox | None = None,
@@ -75,23 +64,7 @@ class ExecutionHarness:
         self.retrieval = retrieval
         self.vector_store = vector_store
         self.llm = llm
-        self.knowledge = knowledge or build_knowledge_capability(
-            settings=settings,
-            state=state,
-            retrieval=retrieval,
-            vector_store=vector_store,
-            llm=llm,
-            model_router=model_router,
-        )
-        self.rag = rag or RagFacade(self.knowledge)
-        self.repository = repository or build_repository_capability()
-        self.api_contract = api_contract or build_api_contract_capability_from_provider(settings=settings)
-        self.artifact = artifact or build_artifact_capability_from_provider(
-            settings=settings,
-            state=state,
-            persistence=memory.persistence,
-        )
-        self.database = database or build_database_capability_from_provider(settings=settings)
+        self.capabilities = capabilities or {}
         self.services = services or {}
         self.guardrail_engine = guardrail_engine or GuardrailEngine(registry)
         self.policy_engine = policy_engine or PolicyEngine()
@@ -119,13 +92,8 @@ class ExecutionHarness:
                 settings=self.settings,
                 llm=self.llm,
                 vector_store=self.vector_store,
-                knowledge=self.knowledge,
-                rag=self.rag,
-                repository=self.repository,
-                api_contract=self.api_contract,
-                artifact=self.artifact,
-                database=self.database,
                 model_router=self.model_router,
+                capabilities=self.capabilities,
                 services=self.services,
             ),
             owner_id_getter=self.hooks.workflow_owner_id,

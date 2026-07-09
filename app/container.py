@@ -67,8 +67,8 @@ from app.agents.tools.web_search_tools import WebSearchTool
 from app.agents.tools.coding_tools import ExtractCodeIssuesTool, RunCodeAnalysisTool
 
 from app.core.config import Settings
-from app.harness.core.hooks import EventBus
-from app.harness.core.trace_hook import MemoryHook, TraceHook
+from app.harness.hooks import EventBus
+from app.harness.trace_hook import MemoryHook, TraceHook
 from app.harness.execution import ExecutionHarness
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
@@ -188,8 +188,7 @@ class AppContainer:
             self.trace,
             self.state,
             self.persistence,
-            knowledge_capability=self.knowledge_capability,
-            rag_facade=self.rag_facade,
+            capabilities=self.capabilities,
             event_bus=self.event_bus,
         )
         self.local_repository_capability = build_repository_capability()
@@ -205,6 +204,16 @@ class AppContainer:
         self.artifact_capability = self.local_artifact_capability
         self.local_database_capability = build_database_capability_from_provider(settings=settings, provider_name='sqlite_local')
         self.database_capability = self.local_database_capability
+
+        # ── 统一组装 capabilities dict，供 Harness 和 Orchestrator 注入 ──
+        self.capabilities = {
+            'knowledge': self.knowledge_capability,
+            'rag': self.rag_facade,
+            'repository': self.repository_capability,
+            'api_contract': self.api_contract_capability,
+            'artifact': self.artifact_capability,
+            'database': self.database_capability,
+        }
 
         # ── 外部数据服务 Capability ────────────
         self.weather_capability = WeatherCapability(api_key=settings.weather_api_key or '')
@@ -361,8 +370,7 @@ class AppContainer:
             self.subagent_runtime,
             guardrail_engine=self.guardrail_engine,
             policy_engine=self.policy_engine,
-            knowledge_capability=self.knowledge_capability,
-            rag_facade=self.rag_facade,
+            capabilities=self.capabilities,
             model_router=self.model_router,
             services=self.external_services,
             event_bus=self.event_bus,

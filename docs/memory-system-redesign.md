@@ -2,7 +2,7 @@
 
 > 本文档描述项目记忆系统（Memory System）的现状、问题、目标架构和实施计划。
 >
-> 对应代码：`app/agents/memory.py`、`app/models/runtime_contracts.py`、`app/services/session_manager.py`、`app/services/state.py`、`app/services/sqlite_store.py`、`app/harness/core/trace_hook.py`
+> 对应代码：`app/agents/memory.py`、`app/models/runtime_contracts.py`、`app/services/session_manager.py`、`app/services/state.py`、`app/services/sqlite_store.py`、`app/harness/trace_hook.py`
 
 ---
 

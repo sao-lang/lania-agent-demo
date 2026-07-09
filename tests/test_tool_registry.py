@@ -158,16 +158,18 @@ class ToolRegistryTests(unittest.TestCase):
             trace=self.trace,
             task_memory=self.memory,
             settings=self.settings,
-            knowledge=None,
-            rag=self.fake_rag,
-            repository=build_repository_capability(repository_root),
-            api_contract=build_api_contract_capability(repository_root),
-            artifact=build_artifact_capability_from_provider(
-                settings=self.settings,
-                state=self.state,
-                persistence=persistence,
-            ),
-            database=build_database_capability(self.settings),
+            deps={
+                'knowledge': None,
+                'rag': self.fake_rag,
+                'repository': build_repository_capability(repository_root),
+                'api_contract': build_api_contract_capability(repository_root),
+                'artifact': build_artifact_capability_from_provider(
+                    settings=self.settings,
+                    state=self.state,
+                    persistence=persistence,
+                ),
+                'database': build_database_capability(self.settings),
+            },
             task_id=self.task.task_id,
             step_name='unit_test',
         )

@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.harness.core.prompt_registry import PromptVersionRegistry
+from app.harness.prompt_registry import PromptVersionRegistry
 from app.harness.grounding import GroundingBundle
 from app.harness.models import ContextBundle
 from app.harness.policy import PolicyProfile

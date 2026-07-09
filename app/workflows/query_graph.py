@@ -10,7 +10,7 @@ from typing import Any
 
 from app.harness.context import ContextHarness
 from app.harness.execution import ExecutionHarness
-from app.harness.extensions.query.reflection import ReflectionHarness
+from app.harness.reflection import ReflectionHarness
 from app.harness.react_runtime import BoundedLocalReActRuntime
 from app.rag.query_engine import RagQueryEngine
 from app.rag.observability import TraceRecorder
@@ -80,7 +80,7 @@ def _resolve_query_entry_route(state: Any) -> str:
 def build_query_graph(
     classic_engine: RagQueryEngine,
     trace: TraceRecorder,
-    knowledge_capability: Any | None = None,
+    capabilities: dict[str, Any] | None = None,
     context_harness: ContextHarness | None = None,
     execution_harness: ExecutionHarness | None = None,
     react_runtime: BoundedLocalReActRuntime | None = None,
@@ -109,7 +109,7 @@ def build_query_graph(
     nodes = QueryWorkflowNodes(
         ensure_query_workflow_runtime(classic_engine),
         trace,
-        knowledge_capability=knowledge_capability,
+        capabilities=capabilities,
         context_harness=context_harness,
         execution_harness=execution_harness,
         react_runtime=react_runtime,

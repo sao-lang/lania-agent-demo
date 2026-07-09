@@ -11,15 +11,9 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from app.agents.memory import TaskMemory
-from app.capabilities.api_contract import ApiContractCapability
-from app.capabilities.artifact import ArtifactCapability
-from app.capabilities.database import DatabaseCapability
-from app.capabilities.knowledge import KnowledgeCapability
-from app.capabilities.repository import RepositoryCapability
 from app.core.config import Settings
 from app.harness.model_router import ModelRouter
 from app.rag.observability import TraceRecorder
-from app.rag.facade import RagFacade
 from app.services.state import InMemoryState
 
 ToolErrorType = Literal[
@@ -118,18 +112,20 @@ class ToolContext:
     settings: Settings
     llm: Any | None = None
     vector_store: Any | None = None
-    knowledge: KnowledgeCapability | None = None
-    rag: RagFacade | None = None
-    repository: RepositoryCapability | None = None
-    api_contract: ApiContractCapability | None = None
-    artifact: ArtifactCapability | None = None
-    database: DatabaseCapability | None = None
+    deps: dict[str, Any] | None = None
     services: dict[str, Any] | None = None
     task_id: str | None = None
     step_name: str | None = None
     tool_call_id: str | None = None
     run_budget: Any | None = None
     model_router: ModelRouter | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        if name == 'deps' or name.startswith('__'):
+            raise AttributeError(name)
+        if self.deps is not None and name in self.deps:
+            return self.deps[name]
+        raise AttributeError(f"'ToolContext' has no attribute '{name}'")
 
 
 class AgentTool(Protocol):

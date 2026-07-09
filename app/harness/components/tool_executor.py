@@ -39,13 +39,8 @@ class ExecutionRuntimeDependencies:
     settings: Settings
     llm: Any
     vector_store: Any
-    knowledge: Any
-    rag: Any
-    repository: Any
-    api_contract: Any
-    artifact: Any
-    database: Any
     model_router: Any
+    capabilities: dict[str, Any] | None = None
     services: dict[str, Any] | None = None
 
 
@@ -223,12 +218,7 @@ class ToolExecutor:
             settings=self.dependencies.settings,
             llm=self.dependencies.llm,
             vector_store=self.dependencies.vector_store,
-            knowledge=self.dependencies.knowledge,
-            rag=self.dependencies.rag,
-            repository=self.dependencies.repository,
-            api_contract=self.dependencies.api_contract,
-            artifact=self.dependencies.artifact,
-            database=self.dependencies.database,
+            deps=self.dependencies.capabilities or {},
             services=self.dependencies.services,
             task_id=self.owner_id_getter(workflow_state),
             step_name=self.owner_step_getter(workflow_state),

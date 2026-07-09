@@ -18,8 +18,7 @@ from app.core.config import Settings
 from app.harness.context import ContextHarness
 from app.harness.evaluation import EvaluationHarness
 from app.harness.execution import ExecutionHarness
-from app.harness.core.hooks import EventBus
-from app.harness.core.kernel import HarnessKernel
+from app.harness.hooks import EventBus
 from app.services.memory_commit_gate import MemoryCommitGate
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
@@ -64,8 +63,7 @@ class TaskWorkflowOrchestrator:
         policy_engine: PolicyEngine | None = None,
         evaluation_harness: EvaluationHarness | None = None,
         react_runtime: BoundedLocalReActRuntime | None = None,
-        knowledge_capability: Any | None = None,
-        rag_facade: RagFacade | None = None,
+        capabilities: dict[str, Any] | None = None,
         persistence: SQLiteStateStore | None = None,
         skill_registry: TaskSkillRegistry | None = None,
         model_router: ModelRouter | None = None,
@@ -96,7 +94,12 @@ class TaskWorkflowOrchestrator:
         self.vector_store = vector_store
         self.llm = llm
         self.model_router = model_router or ModelRouter()
-        self.knowledge_capability = knowledge_capability or getattr(execution_harness, 'knowledge', None)
+        caps = capabilities or {}
+        self.knowledge_capability = caps.get('knowledge')
+        self.rag_facade = caps.get('rag')
+        if self.rag_facade is None and self.knowledge_capability is not None:
+            self.rag_facade = RagFacade(self.knowledge_capability)
+        self.capabilities = caps
         if subagent_runtime is None:
             # 任务系统允许独立构建运行时，避免容器外测试时必须显式注入子 Agent。
             registry_for_runtime = SubAgentRegistry()
@@ -111,7 +114,6 @@ class TaskWorkflowOrchestrator:
         self.context_harness = context_harness or ContextHarness(memory, registry, settings)
         self.evaluation_harness = evaluation_harness or EvaluationHarness(memory, trace, settings, self.policy_engine)
         self.react_runtime = react_runtime or BoundedLocalReActRuntime()
-        self.rag_facade = rag_facade or (getattr(execution_harness, 'rag', None) if execution_harness is not None else None)
         self.services = services or {}
         self.execution_harness = execution_harness or ExecutionHarness(
             registry,
@@ -122,18 +124,13 @@ class TaskWorkflowOrchestrator:
             retrieval,
             vector_store,
             llm,
-            knowledge=self.knowledge_capability,
-            rag=self.rag_facade,
+            capabilities=self.capabilities,
             guardrail_engine=self.guardrail_engine,
             policy_engine=self.policy_engine,
             model_router=self.model_router,
             services=self.services,
             event_bus=event_bus,
         )
-        if self.knowledge_capability is None:
-            self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)
-        if self.rag_facade is None and self.knowledge_capability is not None:
-            self.rag_facade = RagFacade(self.knowledge_capability)
         self.persistence = persistence
         self._nodes: DocumentAnalysisNodes | None = None
         self._task_app: Any | None = None
@@ -267,70 +264,6 @@ class TaskWorkflowOrchestrator:
         runtime_state = {**state, 'graph_entry_route': initial_route}
         result = self._get_task_app().invoke(runtime_state)
         result_state = cast(dict[str, Any], result)
-        result_state['graph_entry_route'] = None
-        self._finalize_successful_task_state(result_state)
-        return result_state
-
-    # ── HarnessKernel 集成（Phase 4） ──────────────────────────────────────────
-
-    def _build_ctx(self) -> dict[str, Any]:
-        """构建 HarnessKernel 运行时上下文。
-
-        将 orchestrator 持有的所有运行时依赖打包为 ctx dict，
-        供 Recipe Stage 通过 ctx.get() 访问。
-        """
-        return {
-            'execution_harness': self.execution_harness,
-            'context_harness': self.context_harness,
-            'evaluation_harness': self.evaluation_harness,
-            'guardrail_engine': self.guardrail_engine,
-            'policy_engine': self.policy_engine,
-            'planner': self.planner,
-            'llm': self.llm,
-            'task_memory': self.memory,
-            'memory_gate': self.memory_gate,
-            'trace': self.trace,
-            'settings': self.settings,
-        }
-
-    def _invoke_via_kernel(
-        self, state: dict[str, Any], *, initial_route: str = 'load_task'
-    ) -> dict[str, Any]:
-        """通过 HarnessKernel + Recipe 执行任务工作流。
-
-        这是 Phase 4 引入的替代路径，与 _invoke_workflow 并行存在。
-        在 Phase 4 验证完成后，将逐步替换 _invoke_workflow。
-
-        Args:
-            state: 初始状态字典（包含 task、request 等）。
-            initial_route: 初始路由节点名（支持 checkpoint 恢复）。
-
-        Returns:
-            工作流结束后的状态字典。
-        """
-        from app.harness.recipes.task_recipe import DocumentAnalysisRecipe, DocumentSummaryRecipe
-
-        request = state.get('request', {})
-        task_type = request.get('task_type', 'document_analysis')
-
-        recipe_class = DocumentSummaryRecipe if task_type == 'document_summary' else DocumentAnalysisRecipe
-        recipe = recipe_class()
-
-        initial_state = {
-            'task': state.get('task'),
-            'request': request,
-            'task_type': task_type,
-        }
-
-        kernel = HarnessKernel(event_bus=self.execution_harness.event_bus)
-        graph = kernel.build_graph(recipe)
-        ctx = self._build_ctx()
-        result = kernel.run(graph, initial_state, ctx)
-
-        if not result.completed:
-            raise RuntimeError(result.error or 'kernel execution failed')
-
-        result_state = result.state
         result_state['graph_entry_route'] = None
         self._finalize_successful_task_state(result_state)
         return result_state

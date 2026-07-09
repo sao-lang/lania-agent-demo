@@ -21,10 +21,9 @@ from app.capabilities.knowledge.contracts import RetrievalQualityReport
 from app.core.config import Settings
 from app.harness.context import ContextHarness
 from app.harness.execution import ExecutionHarness
-from app.harness.extensions.query.recovery import RecoveryManager
-from app.harness.extensions.query.reflection import ReflectionHarness
-from app.harness.core.hooks import EventBus
-from app.harness.core.kernel import HarnessKernel
+from app.harness.recovery import RecoveryManager
+from app.harness.reflection import ReflectionHarness
+from app.harness.hooks import EventBus
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.models import ContextBundle
@@ -99,8 +98,7 @@ class QueryWorkflowOrchestrator:
         trace: TraceRecorder,
         state: InMemoryState | None = None,
         persistence: SQLiteStateStore | None = None,
-        knowledge_capability: Any | None = None,
-        rag_facade: RagFacade | None = None,
+        capabilities: dict[str, Any] | None = None,
         registry: ToolRegistry | None = None,
         task_memory: TaskMemory | None = None,
         context_harness: ContextHarness | None = None,
@@ -127,10 +125,14 @@ class QueryWorkflowOrchestrator:
         self.state = state
         self.persistence = persistence
         self.model_router = model_router or ModelRouter()
-        # knowledge / rag / harness 几组依赖允许从外部显式注入，也允许按经典 query engine 能力自动推导，
-        # 这样既兼容容器内正式装配，也兼容测试或迁移阶段的局部构造。
-        explicit_fast_path_capability = knowledge_capability or getattr(classic_engine, 'knowledge_capability', None)
-        self.knowledge_capability = explicit_fast_path_capability or getattr(execution_harness, 'knowledge', None)
+        # knowledge / rag 从 capabilities dict 中提取，不再硬编码独立参数。
+        self.knowledge_capability = capabilities.get('knowledge') if capabilities else None
+        if self.knowledge_capability is None:
+            self.knowledge_capability = getattr(classic_engine, 'knowledge_capability', None)
+        self.rag_facade = capabilities.get('rag') if capabilities else None
+        if self.rag_facade is None and self.knowledge_capability is not None:
+            self.rag_facade = RagFacade(self.knowledge_capability)
+        self.capabilities = capabilities or {}
         self.registry = registry or ToolRegistry()
         if registry is None:
             for tool in build_runtime_rag_tools():
@@ -140,13 +142,6 @@ class QueryWorkflowOrchestrator:
         self.policy_engine = policy_engine or PolicyEngine(settings, persistence=self.persistence)
         self.context_harness = context_harness or ContextHarness(self.task_memory, self.registry, settings)
         self.react_runtime = react_runtime or BoundedLocalReActRuntime()
-        self.rag_facade = rag_facade or (
-            getattr(execution_harness, 'rag', None)
-            if execution_harness is not None
-            else None
-        )
-        if self.rag_facade is None and self.knowledge_capability is not None:
-            self.rag_facade = RagFacade(self.knowledge_capability)
         self.execution_harness = execution_harness or ExecutionHarness(
             self.registry,
             self.task_memory,
@@ -156,17 +151,12 @@ class QueryWorkflowOrchestrator:
             getattr(classic_engine, 'retrieval_service', None),
             getattr(getattr(classic_engine, 'retrieval_service', None), 'vector_store', None),
             getattr(classic_engine, 'llm', None),
-            knowledge=self.knowledge_capability,
-            rag=self.rag_facade,
+            capabilities=self.capabilities,
             guardrail_engine=self.guardrail_engine,
             policy_engine=self.policy_engine,
             model_router=self.model_router,
             event_bus=event_bus,
         )
-        if self.knowledge_capability is None:
-            self.knowledge_capability = getattr(self.execution_harness, 'knowledge', None)
-        if self.rag_facade is None:
-            self.rag_facade = getattr(self.execution_harness, 'rag', None)
         self.reflection_harness = reflection_harness or ReflectionHarness()
         self.recovery_manager = recovery_manager or RecoveryManager()
         self._query_app: Any | None = None
@@ -567,75 +557,6 @@ class QueryWorkflowOrchestrator:
                 self._persist_query_run(state)
             raise QueryWorkflowExecutionError(str(exc), state) from exc
 
-    # ── HarnessKernel 集成（Phase 3） ──────────────────────────────────────────
-
-    def _build_ctx(self) -> dict[str, Any]:
-        """构建 HarnessKernel 运行时上下文。
-
-        将 orchestrator 持有的所有运行时依赖打包为 ctx dict，
-        供 Recipe Stage 通过 ctx.get() 访问。
-        """
-        return {
-            'runtime': self.query_runtime,
-            'guardrail_engine': self.guardrail_engine,
-            'policy_engine': self.policy_engine,
-            'execution_harness': self.execution_harness,
-            'context_harness': self.context_harness,
-            'reflection_harness': self.reflection_harness,
-            'react_runtime': self.react_runtime,
-            'trace': self.trace,
-            'settings': self.settings,
-        }
-
-    def _invoke_via_kernel(
-        self, payload: QueryRequest | ChatRequest, mode: str
-    ) -> dict[str, Any]:
-        """通过 HarnessKernel + Recipe 执行查询工作流。
-
-        这是 Phase 3 引入的替代路径，与 _invoke_workflow 并行存在。
-        在 Phase 3 验证完成后，将逐步替换 _invoke_workflow。
-
-        Args:
-            payload: 查询或会话请求对象。
-            mode: 当前工作流模式（query / chat / query_stream / chat_stream）。
-
-        Returns:
-            工作流结束后的状态字典。
-        """
-        from app.harness.recipes.query_recipe import ChatRecipe, QueryRecipe
-
-        question = getattr(payload, 'question', '') or ''
-        if hasattr(payload, 'messages') and payload.messages:
-            question = payload.messages[-1].content if hasattr(payload.messages[-1], 'content') else question
-
-        recipe_class = ChatRecipe if mode in ('chat', 'chat_stream') else QueryRecipe
-        recipe = recipe_class()
-
-        initial_state: dict[str, Any] = {
-            'request': payload,
-            'question': question,
-            'mode': mode,
-            'retry_count': 0,
-            'max_retry_count': (
-                max(0, int(self.settings.self_rag_max_retry_count))
-                if getattr(payload, 'use_corrective_rag', False) and self.settings.enable_self_rag_retry
-                else 0
-            ),
-        }
-
-        kernel = HarnessKernel(event_bus=self.execution_harness.event_bus)
-        graph = kernel.build_graph(recipe)
-        ctx = self._build_ctx()
-        result = kernel.run(graph, initial_state, ctx)
-
-        if not result.completed:
-            raise QueryWorkflowExecutionError(
-                result.error or 'kernel execution failed',
-                partial_state=result.state,
-            )
-
-        return result.state
-
     # ── 恢复与回放 ────────────────────────────────────────────────────────────
 
     def replay_from_checkpoint(self, checkpoint: CheckpointRecord) -> QueryGraphState:
@@ -803,7 +724,7 @@ class QueryWorkflowOrchestrator:
             self._query_app = build_query_graph(
                 self.classic_engine,
                 self.trace,
-                knowledge_capability=self.knowledge_capability,
+                capabilities=self.capabilities,
                 context_harness=self.context_harness,
                 execution_harness=self.execution_harness,
                 react_runtime=self.react_runtime,

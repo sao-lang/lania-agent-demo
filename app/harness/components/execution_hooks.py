@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.agents.memory import TaskMemory
-from app.harness.core.hooks import EventBus
+from app.harness.hooks import EventBus
 from app.harness.models import ExecutionRuntimeSummary, ToolExecutionResult
 from app.rag.observability import TraceRecorder
 
