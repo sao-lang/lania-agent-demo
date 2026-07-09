@@ -38,6 +38,7 @@ async def agent_chat(
     """Agent 对话 - SSE 流式返回。
 
     唯一的 Agent 交互入口。
+    mode=auto: 自动判断（默认）
     mode=chat: 直接执行
     mode=plan: 先出计划 → 等待确认 → 执行
     mode=autopilot: 自动执行 → 询问下一步

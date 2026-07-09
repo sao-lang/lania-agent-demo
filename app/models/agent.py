@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # 执行模式
 # ──────────────────────────────────────────────
 
-AgentMode = Literal["chat", "plan", "autopilot"]
+AgentMode = Literal["chat", "plan", "autopilot", "auto"]
 
 
 # ──────────────────────────────────────────────
@@ -119,7 +119,7 @@ class AgentChatRequest(BaseModel):
     """统一的 Agent 对话请求。"""
 
     message: str = Field(min_length=1)
-    mode: AgentMode = "chat"
+    mode: AgentMode = "auto"
     session_id: str | None = None
     capability: str | None = None          # null = 自动识别
     collection_name: str = "default"

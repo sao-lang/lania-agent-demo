@@ -92,6 +92,7 @@ class AgentService:
         """处理 Agent 对话请求，产生事件流。
 
         根据 mode 决定执行流程:
+        - auto: 自动判断任务复杂度，选择 chat 或 plan（默认）
         - chat: 直接执行
         - plan: 生成计划 → 等待确认 → 执行
         - autopilot: 自动执行 → 询问下一步
@@ -127,13 +128,19 @@ class AgentService:
         else:
             yield AgentEvent.intent(capability, 1.0)
 
-        # 4. 按 mode 执行
-        if session.mode == "plan":
+        # 4. 自动模式 → 根据任务复杂度决定实际执行模式
+        resolved_mode = session.mode
+        if resolved_mode == "auto":
+            resolved_mode = await self._resolve_mode(request.message, capability)
+            session.mode = resolved_mode
+
+        # 5. 按 resolved_mode 执行
+        if resolved_mode == "plan":
             async for event in self._handle_plan_mode(
                 request, capability, session,
             ):
                 yield event
-        elif session.mode == "autopilot":
+        elif resolved_mode == "autopilot":
             async for event in self._handle_autopilot_mode(
                 request, capability, session,
             ):
@@ -144,11 +151,11 @@ class AgentService:
             ):
                 yield event
 
-        # 5. 保存会话
+        # 6. 保存会话
         session.history.append(Message(role="user", content=request.message))
         await self._session_manager.save(session)
 
-        # 完成事件
+        # 7. 完成事件
         duration_ms = int((time.monotonic() - start_time) * 1000)
         yield AgentEvent.completed(duration_ms=duration_ms)
 
@@ -266,6 +273,51 @@ class AgentService:
         yield AgentEvent.ask_user("任务已完成。还需要我做什么？")
 
     # ── 内部方法 ──────────────────────────────
+
+    async def _resolve_mode(self, message: str, capability: str) -> str:
+        """根据任务复杂度自动选择执行模式。
+
+        策略:
+        1. 复杂能力需要多个工具 → 直接走 plan 模式
+        2. LLM 判断是否需要规划（当有 LLM 可用时）
+        3. 默认：简单消息 → chat，长消息 → plan
+
+        Args:
+            message: 用户问题
+            capability: 识别出的 Capability
+
+        Returns:
+            解析后的实际执行模式 ("chat" 或 "plan")
+        """
+        # 规则 1: 根据能力类型决策
+        # 已知需要多工具执行的能力走 plan
+        NEED_PLAN_CAPABILITIES = {
+            "code_review", "data_analysis", "document_analysis",
+        }
+        if capability in NEED_PLAN_CAPABILITIES:
+            return "plan"
+
+        # 规则 2: 根据能力定义中的工具数量决策
+        cap_def = self._registry.get(capability)
+        if cap_def and cap_def.tools and len(cap_def.tools) >= 2:
+            return "plan"
+
+        # 规则 3: 根据输入长度粗略判断复杂度（启发式）
+        # 长消息更可能是复杂任务需要规划
+        if len(message.strip()) > 50:
+            return "plan"
+
+        # 规则 4: 关键词触发规划
+        NEED_PLAN_KEYWORDS = [
+            "分步", "分步骤", "一步步", "分解", "一步步来",
+            "分阶段", "计划一下", "先规划", "列出步骤",
+        ]
+        for kw in NEED_PLAN_KEYWORDS:
+            if kw in message:
+                return "plan"
+
+        # 默认: 简单对话 → chat
+        return "chat"
 
     async def _route_to_capability(
         self,
