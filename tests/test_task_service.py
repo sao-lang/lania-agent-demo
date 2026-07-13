@@ -6,7 +6,6 @@ from pathlib import Path
 from app.agents.memory import TaskMemory
 from app.agents.planner import TaskPlanner
 from app.agents.runtime import AgentRuntime
-from app.agents.subagents import SubAgentRegistry
 from app.agents.tools.analysis_tools import ExtractKeyPointsTool, ExtractRisksTool
 from app.agents.tools.artifact_tools import DraftReportTool, FinalizeReportTool, ReviewReportTool
 from app.agents.tools.defaults import build_runtime_rag_tools

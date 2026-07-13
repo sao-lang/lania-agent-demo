@@ -17,9 +17,6 @@ from app.harness.hooks import EventBus, EventPayload, HookEvent
 from app.harness.policy import PolicyEngine
 from app.models.admin import (
     AgentCreateRequest,
-    PromptCreateRequest,
-    SkillCreateRequest,
-    SkillRuleCreate,
     InstructionsUpdateRequest,
     InstructionsResponse,
     FileInstructionCreate,
@@ -38,7 +35,6 @@ from app.services.hook_loader import FileHookLoader, FileHook, HookAction
 from app.services.instructions_manager import InstructionsManager
 from app.services.prompt_manager import PromptManager
 from app.services.session_manager import SessionManager
-from app.services.skill_manager import SkillManager
 from app.services.sqlite_store import SQLiteStateStore
 from app.services.state import InMemoryState
 
@@ -510,7 +506,7 @@ class TestPromptManagerImportFile(unittest.TestCase):
                 lines.append(f"  - {v}")
         lines.append("---")
         lines.append("")
-        lines.append(f"Hello { '{username}' }!")
+        lines.append(f"Hello {'{username}'}!")
         fpath = self.test_dir / f"{name}.prompt.md"
         fpath.write_text("\n".join(lines), encoding="utf-8")
         return fpath

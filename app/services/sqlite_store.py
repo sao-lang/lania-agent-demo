@@ -30,6 +30,7 @@ from app.types import (
     TaskRunRecord,
 )
 
+
 class SQLiteStateStore:
     """负责把运行期状态同步到本地 SQLite。"""
 

@@ -1,0 +1,19 @@
+[flake8]
+max-line-length = 200
+exclude = .venv,data,tests,scripts,.git,__pycache__,.mypy_cache
+per-file-ignores =
+    app/capabilities/__init__.py: F403
+    app/capabilities/api_contract/__init__.py: F403
+    app/capabilities/artifact/__init__.py: F403
+    app/capabilities/calculator/__init__.py: F403
+    app/capabilities/coding/__init__.py: F403
+    app/capabilities/currency/__init__.py: F403
+    app/capabilities/database/__init__.py: F403
+    app/capabilities/datetime/__init__.py: F403
+    app/capabilities/finance/__init__.py: F403
+    app/capabilities/geocoding/__init__.py: F403
+    app/capabilities/knowledge/__init__.py: F403
+    app/capabilities/registry.py: F403
+    app/capabilities/repository/__init__.py: F403
+    app/capabilities/sandbox_execute/__init__.py: F403
+    app/capabilities/translation/__init__.py: F403

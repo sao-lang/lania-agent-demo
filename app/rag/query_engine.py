@@ -7,16 +7,13 @@
 
 from __future__ import annotations
 
-import json
-import re
-from collections.abc import Generator, Iterator
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.chat_engine import CondenseQuestionChatEngine
-from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.memory import ChatMemoryBuffer
 
 from app.capabilities.knowledge import (
@@ -38,7 +35,7 @@ from app.services.query_preprocess_service import QueryPreprocessService
 from app.services.semantic_cache import SemanticCacheService
 from app.services.sqlite_store import SQLiteStateStore
 from app.services.state import InMemoryState
-from app.types import MetadataFilters as MetadataFiltersMap, SSEEvent, SessionMessageRecord, SessionRecord
+from app.types import SSEEvent, SessionMessageRecord, SessionRecord
 
 from app.rag.query_engine_parts.streaming import QueryEngineStreamingMixin
 from app.rag.query_engine_parts.policy_cache import QueryEnginePolicyCacheMixin

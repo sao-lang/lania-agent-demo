@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from app.agents.tools.artifact_tools import DraftReportOutput
 from app.core.config import Settings
 from app.harness.sandbox import build_default_sandbox_worker_registry
-from app.models.artifact import ReportArtifactContent, ReviewResult
+from app.models.artifact import ReviewResult
 
 
 class FakeLocalSandboxEngine:

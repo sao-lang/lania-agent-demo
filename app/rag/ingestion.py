@@ -7,29 +7,19 @@
 
 from __future__ import annotations
 
-from collections import Counter
-import csv
 import hashlib
-import importlib
-import io
-import json
 import re
 import shutil
-import subprocess
 import tempfile
-import zipfile
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from llama_index.core import Document
-from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.node_parser import SentenceSplitter
 
 from app.core.config import Settings
-from app.rag.llamaindex_components import build_embed_model, build_vector_store
+from app.rag.llamaindex_components import build_embed_model
 from app.rag.observability import TraceRecorder
 from app.rag.vector_store import ChromaClientFactory
 from app.services.graph_service import GraphService
@@ -72,7 +62,14 @@ class _HTMLTextExtractor(HTMLParser):
         return "\n".join(self.parts)
 
 
-class RagIngestionService(IngestionPdfLayoutMixin, IngestionPdfSegmentsMixin, IngestionExtractorMixin, IngestionSegmentProcessingMixin, IngestionDocumentBuilderMixin, IngestionImportMixin):
+class RagIngestionService(
+    IngestionPdfLayoutMixin,
+    IngestionPdfSegmentsMixin,
+    IngestionExtractorMixin,
+    IngestionSegmentProcessingMixin,
+    IngestionDocumentBuilderMixin,
+    IngestionImportMixin,
+):
     """负责把多种文档格式转换为可检索的向量分块。"""
 
     TABLE_SEGMENT_ROW_BATCH = 40

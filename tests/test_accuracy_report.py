@@ -1,7 +1,6 @@
 """准确率评估报告相关测试，覆盖对比摘要、回放报告和发布门禁等关键输出的渲染与判定逻辑。"""
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 

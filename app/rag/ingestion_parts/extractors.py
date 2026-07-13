@@ -6,36 +6,20 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import csv
-import hashlib
 import importlib
 import io
-import json
 import re
 import shutil
 import subprocess
 import tempfile
-import zipfile
-from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
-from llama_index.core import Document
-from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.node_parser import SentenceSplitter
 
-from app.core.config import Settings
 from app.rag.ingestion_parts._typing import IngestionTypingMixin
-from app.rag.llamaindex_components import build_embed_model, build_vector_store
-from app.rag.observability import TraceRecorder
-from app.rag.vector_store import ChromaClientFactory
-from app.services.graph_service import GraphService
-from app.services.sqlite_store import SQLiteStateStore
-from app.services.state import InMemoryState
-from app.types import DocumentRecord
+
 
 class _HTMLTextExtractor(HTMLParser):
     """把 HTML 内容提取为纯文本片段。"""
@@ -58,6 +42,7 @@ class _HTMLTextExtractor(HTMLParser):
     def get_text(self) -> str:
         """返回拼接后的纯文本内容。"""
         return "\n".join(self.parts)
+
 
 class IngestionExtractorMixin(IngestionTypingMixin):
     """封装摄取服务中的多格式文本抽取与结构化片段构建逻辑。"""
@@ -241,7 +226,7 @@ class IngestionExtractorMixin(IngestionTypingMixin):
         total_rows = len(data_rows)
         if total_rows == 0:
             total_rows = len(rows)
-        batches = [data_rows[index : index + self.TABLE_SEGMENT_ROW_BATCH] for index in range(0, len(data_rows), self.TABLE_SEGMENT_ROW_BATCH)]
+        batches = [data_rows[index: index + self.TABLE_SEGMENT_ROW_BATCH] for index in range(0, len(data_rows), self.TABLE_SEGMENT_ROW_BATCH)]
         if not batches:
             batches = [[]]
 
@@ -678,7 +663,9 @@ class IngestionExtractorMixin(IngestionTypingMixin):
         soffice = self._resolve_office_converter_command()
         if soffice is None:
             raise ValueError(
-                f'legacy office format requires LibreOffice conversion; install LibreOffice or set OFFICE_CONVERTER_COMMAND, then retry converting to {target_suffix}'
+                'legacy office format requires LibreOffice conversion; '
+                'install LibreOffice or set OFFICE_CONVERTER_COMMAND, '
+                f'then retry converting to {target_suffix}'
             )
 
         with tempfile.TemporaryDirectory(prefix='rag-office-convert-') as tmp_dir_name:

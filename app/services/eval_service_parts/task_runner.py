@@ -7,41 +7,21 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
 from typing import TYPE_CHECKING, Any, cast
-from uuid import uuid4
 
-from app.core.config import Settings
 from app.core.bucketing import infer_bucket
-from app.core.errors import bad_request_error
 from app.models.eval import (
-    EvalStrategyConfig,
     EvalTaskResponse,
-    RagasCompareMetricItem,
-    RagasCompareRequest,
-    RagasCompareResponse,
-    RagasCompareStrategyResult,
     RagasEvalRequest,
-    ReplayBucketStats,
-    ReplayCompareMetricItem,
-    ReplayCompareRequest,
-    ReplayCompareResponse,
-    ReplayStrategySummary,
 )
 from app.models.query import QueryRequest
-from app.rag.observability import TraceRecorder
-from app.services.query_service import QueryService
-from app.services.sqlite_store import SQLiteStateStore
 from app.services.eval_service_parts._typing import EvalServiceTypingMixin
-from app.services.state import InMemoryState
 
 if TYPE_CHECKING:
-    from datasets import Dataset
-    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    pass
 
 
 class EvalTaskRunnerMixin(EvalServiceTypingMixin):

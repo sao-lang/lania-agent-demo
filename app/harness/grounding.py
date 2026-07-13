@@ -71,27 +71,27 @@ class GroundingEngine:
     ) -> GroundingResult:
         """构建完整的 Grounding Bundle。"""
         self._cache_evidence(evidence_pack)
-        
+
         claims = []
         evidence_map = {}
         unsupported_claims = []
         coverage_gaps = []
-        
+
         if analysis:
             claims.extend(self._align_findings(analysis.get('key_findings', []), evidence_pack))
             claims.extend(self._align_risks(analysis.get('risks', []), evidence_pack))
-        
+
         if draft_content:
             claims.extend(self._align_summary(draft_content, evidence_pack))
             claims.extend(self._align_report_claims(draft_content, evidence_pack))
-        
+
         evidence_map = self._build_citation_map(claims, evidence_pack)
         unsupported_claims = [claim.content for claim in claims if not claim.is_supported]
         coverage_gaps = self._detect_coverage_gaps(evidence_pack, claims)
-        
+
         alignment_score = self._calculate_alignment_score(claims)
         coverage_ratio = self._calculate_coverage_ratio(evidence_pack, claims)
-        
+
         grounding_bundle = GroundingBundle(
             findings=analysis.get('key_findings', []) if analysis else [],
             evidence_map=evidence_map,
@@ -100,7 +100,7 @@ class GroundingEngine:
             unsupported_claims=unsupported_claims,
             coverage_gaps=coverage_gaps,
         )
-        
+
         return GroundingResult(
             grounding_bundle=grounding_bundle,
             alignment_score=alignment_score,
@@ -119,30 +119,30 @@ class GroundingEngine:
     def _align_findings(self, findings: list[dict], evidence_pack: Any) -> list[GroundingClaim]:
         """将关键发现与证据对齐。"""
         claims: list[GroundingClaim] = []
-        
+
         for finding in findings:
             finding_item = FindingItem(**finding) if isinstance(finding, dict) else finding
             claim = self._create_claim_from_finding(finding_item, evidence_pack)
             claims.append(claim)
-        
+
         return claims
 
     def _align_risks(self, risks: list[dict], evidence_pack: Any) -> list[GroundingClaim]:
         """将风险项与证据对齐。"""
         claims: list[GroundingClaim] = []
-        
+
         for risk in risks:
             risk_item = RiskItem(**risk) if isinstance(risk, dict) else risk
             claim = self._create_claim_from_risk(risk_item, evidence_pack)
             claims.append(claim)
-        
+
         return claims
 
     def _align_summary(self, draft_content: ReportArtifactContent, evidence_pack: Any) -> list[GroundingClaim]:
         """将摘要与证据对齐。"""
         if not draft_content.summary.strip():
             return []
-        
+
         claim = GroundingClaim(
             claim_id='summary-1',
             claim_type='summary',
@@ -152,27 +152,27 @@ class GroundingEngine:
             evidence_support_score=self._calculate_support_score(draft_content.summary, evidence_pack),
             is_supported=True,
         )
-        
+
         return [claim]
 
     def _align_report_claims(self, draft_content: ReportArtifactContent, evidence_pack: Any) -> list[GroundingClaim]:
         """对齐报告中的所有断言。"""
         claims: list[GroundingClaim] = []
-        
+
         for idx, finding in enumerate(draft_content.key_findings, start=1):
             claim = self._create_claim_from_finding(finding, evidence_pack)
             claims.append(claim)
-        
+
         for idx, risk in enumerate(draft_content.risks, start=1):
             claim = self._create_claim_from_risk(risk, evidence_pack)
             claims.append(claim)
-        
+
         return claims
 
     def _create_claim_from_finding(self, finding: FindingItem, evidence_pack: Any) -> GroundingClaim:
         """从 FindingItem 创建 GroundingClaim。"""
         supported, support_score = self._verify_citation_support(finding.citation_ids, evidence_pack)
-        
+
         return GroundingClaim(
             claim_id=finding.finding_id,
             claim_type='finding',
@@ -186,7 +186,7 @@ class GroundingEngine:
     def _create_claim_from_risk(self, risk: RiskItem, evidence_pack: Any) -> GroundingClaim:
         """从 RiskItem 创建 GroundingClaim。"""
         supported, support_score = self._verify_citation_support(risk.citation_ids, evidence_pack)
-        
+
         return GroundingClaim(
             claim_id=risk.risk_id,
             claim_type='risk',
@@ -201,76 +201,76 @@ class GroundingEngine:
         """验证引用是否有证据支撑。"""
         if not citation_ids:
             return False, 0.0
-        
+
         valid_count = 0
         total_score = 0.0
-        
+
         if evidence_pack and hasattr(evidence_pack, 'evidence_items'):
             evidence_by_id = {item.citation_id: item for item in evidence_pack.evidence_items}
-            
+
             for citation_id in citation_ids:
                 if citation_id in evidence_by_id:
                     valid_count += 1
                     total_score += evidence_by_id[citation_id].support_score
-        
+
         if valid_count == 0:
             return False, 0.0
-        
+
         support_ratio = valid_count / len(citation_ids)
         avg_score = total_score / valid_count if valid_count > 0 else 0.0
-        
+
         return support_ratio >= 0.5, min(1.0, support_ratio * avg_score)
 
     def _calculate_support_score(self, content: str, evidence_pack: Any) -> float:
         """计算内容的证据支撑分数。"""
         if not evidence_pack or not hasattr(evidence_pack, 'evidence_items'):
             return 0.0
-        
+
         evidence_text = '\n'.join(item.text for item in evidence_pack.evidence_items).lower()
         content_lower = content.lower()
-        
+
         keywords = [word for word in content_lower.split() if len(word) >= 4]
         if not keywords:
             return 0.0
-        
+
         matched = sum(1 for keyword in keywords if keyword in evidence_text)
         return min(1.0, matched / len(keywords))
 
     def _estimate_confidence(self, finding: FindingItem, evidence_pack: Any) -> float:
         """估算发现的置信度。"""
         base_confidence = 0.5
-        
+
         if finding.citation_ids:
             evidence_count = len(finding.citation_ids)
             base_confidence = min(1.0, 0.5 + evidence_count * 0.1)
-        
+
         if evidence_pack and hasattr(evidence_pack, 'coverage_score'):
             base_confidence = (base_confidence + float(evidence_pack.coverage_score)) / 2
-        
+
         return round(base_confidence, 2)
 
     def _estimate_risk_confidence(self, risk: RiskItem, evidence_pack: Any) -> float:
         """估算风险的置信度。"""
         base_confidence = 0.6
-        
+
         if risk.citation_ids:
             evidence_count = len(risk.citation_ids)
             base_confidence = min(1.0, 0.5 + evidence_count * 0.15)
-        
+
         if evidence_pack and hasattr(evidence_pack, 'coverage_score'):
             base_confidence = (base_confidence + float(evidence_pack.coverage_score)) / 2
-        
+
         return round(base_confidence, 2)
 
     def _build_citation_map(self, claims: list[GroundingClaim], evidence_pack: Any) -> dict[str, list[str]]:
         """构建从结论到证据位置的映射。"""
         citation_map: dict[str, list[str]] = {}
-        
+
         if not evidence_pack or not hasattr(evidence_pack, 'evidence_items'):
             return citation_map
-        
+
         evidence_by_id = {item.citation_id: item for item in evidence_pack.evidence_items}
-        
+
         for claim in claims:
             locations = []
             for citation_id in claim.citation_ids:
@@ -281,48 +281,48 @@ class GroundingEngine:
                         location += f":{evidence.page}"
                     locations.append(location)
             citation_map[claim.claim_id] = locations
-        
+
         return citation_map
 
     def _detect_coverage_gaps(self, evidence_pack: Any, claims: list[GroundingClaim]) -> list[str]:
         """检测证据覆盖缺口。"""
         gaps: list[str] = []
-        
+
         if evidence_pack and hasattr(evidence_pack, 'missing_aspects'):
             gaps.extend(list(evidence_pack.missing_aspects))
-        
+
         unsupported_claims = [claim for claim in claims if not claim.is_supported]
         for claim in unsupported_claims:
             gaps.append(f"UNSUPPORTED_CLAIM: {claim.content[:50]}...")
-        
+
         return gaps[:10]
 
     def _calculate_alignment_score(self, claims: list[GroundingClaim]) -> float:
         """计算整体对齐分数。"""
         if not claims:
             return 0.0
-        
+
         supported_count = sum(1 for claim in claims if claim.is_supported)
         avg_support_score = sum(claim.evidence_support_score for claim in claims) / len(claims)
-        
+
         return round((supported_count / len(claims)) * avg_support_score, 2)
 
     def _calculate_coverage_ratio(self, evidence_pack: Any, claims: list[GroundingClaim]) -> float:
         """计算证据覆盖比率。"""
         if not evidence_pack or not hasattr(evidence_pack, 'evidence_items'):
             return 0.0
-        
+
         total_evidence = len(evidence_pack.evidence_items)
         if total_evidence == 0:
             return 0.0
-        
+
         used_citations = set()
         for claim in claims:
             used_citations.update(claim.citation_ids)
-        
+
         evidence_by_id = {item.citation_id: item for item in evidence_pack.evidence_items}
         used_count = sum(1 for citation_id in used_citations if citation_id in evidence_by_id)
-        
+
         return round(used_count / total_evidence, 2)
 
     def build_open_question_fallback(self, context: str, missing_aspects: list[str]) -> dict[str, Any]:

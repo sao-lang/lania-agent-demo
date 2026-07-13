@@ -153,7 +153,7 @@ class MemoryCommitGate:
         records = self._task_memory.query_memory_records(task_id)
         count = 0
         for i, a in enumerate(records):
-            for b in records[i + 1 :]:
+            for b in records[i + 1:]:
                 if (
                     a.kind == b.kind
                     and a.scope == b.scope

@@ -624,7 +624,7 @@ class AnswerService:
         stripped = text.strip()
         if not stripped:
             return []
-        return [stripped[index : index + chunk_size] for index in range(0, len(stripped), chunk_size)]
+        return [stripped[index: index + chunk_size] for index in range(0, len(stripped), chunk_size)]
 
     def extract_stream_delta(self, item: Any, emitted: str) -> str:
         """从不同流式返回格式里提取新增文本片段。
@@ -647,12 +647,12 @@ class AnswerService:
         text = getattr(item, 'text', None)
         if isinstance(text, str) and text:
             if text.startswith(emitted):
-                return text[len(emitted) :]
+                return text[len(emitted):]
             return text
 
         if isinstance(item, str):
             if item.startswith(emitted):
-                return item[len(emitted) :]
+                return item[len(emitted):]
             return item
 
         return ''

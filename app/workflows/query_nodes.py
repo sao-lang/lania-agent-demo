@@ -21,7 +21,7 @@ from app.harness.reflection import ReflectionHarness
 from app.harness.model_router import ModelRouter
 from app.harness.react_runtime import BoundedLocalReActRuntime
 from app.models.artifact import EvidencePack
-from app.models.task import CheckpointRecord, ReflectionDecision, StepRuntimeRecord
+from app.models.task import ReflectionDecision
 from app.models.query import (
     ChatRequest,
     CitationItem,
@@ -62,7 +62,6 @@ from app.workflows.query_events import (
 from app.workflows.query_runtime import QueryWorkflowRuntime, ensure_query_workflow_runtime
 from app.workflows.step_lifecycle import (
     create_checkpoint,
-    create_run_event,
     dump_step_runtimes,
     mark_step_completed,
     mark_step_failed,
@@ -715,7 +714,6 @@ class QueryWorkflowNodes:
         这里不会直接吞掉错误语义，而是把失败原因映射为 `missing_aspects`，让后续答案生成或结果
         展示阶段能够显式披露“缺什么、为什么缺”。
         """
-        request = state['request']
         missing_aspects = requested_focus_aspects or [str(exc.code)]
         return EvidencePack(
             task_id=state['task_run'].run_id,

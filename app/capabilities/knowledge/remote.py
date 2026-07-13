@@ -252,6 +252,7 @@ class RemoteKnowledgeCapability:
         finally:
             if owns_client:
                 client.close()
+
     def _can_fallback(self) -> bool:
         """判断当前配置下是否允许切换到本地回退能力。"""
         return self.allow_local_fallback and self.fallback_capability is not None
@@ -322,7 +323,6 @@ class RemoteKnowledgeCapability:
             trace_list = trace_context.get('trace')
             if isinstance(trace_list, list):
                 trace_list.append({'event': name, **payload})
-
 
     def _headers(self) -> dict[str, str]:
         """构造远程请求所需的鉴权与内容类型头部。"""

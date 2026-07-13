@@ -15,8 +15,10 @@ router = APIRouter(prefix="/admin/skills", tags=["admin"])
 
 def get_container():
     from fastapi import Request
+
     async def _get(request: Request):
         return request.app.state.container
+
     return _get
 
 

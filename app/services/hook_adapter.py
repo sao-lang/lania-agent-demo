@@ -6,12 +6,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
 
-from app.harness.hooks import EventPayload, HookEvent, RuntimeHook
-from app.services.hook_actions import HookActionEngine, HookActionResult
-from app.services.hook_loader import FileHook, HookAction
+from app.harness.hooks import EventPayload
+from app.services.hook_actions import HookActionEngine
+from app.services.hook_loader import FileHook
 
 
 class HookRuntimeAdapter:

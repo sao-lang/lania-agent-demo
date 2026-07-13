@@ -161,7 +161,7 @@ class TaskMemory:
         if recoverable_only:
             records = [item for item in records if bool(item.get('recoverable'))]
         ordered = sorted(records, key=lambda item: (item['updated_at'], item['created_at']), reverse=True)
-        return [self._to_task_run_summary(item) for item in ordered[offset : offset + limit]]
+        return [self._to_task_run_summary(item) for item in ordered[offset: offset + limit]]
 
     def list_artifacts(self, task_id: str) -> list[Artifact]:
         """按版本顺序返回任务产物。"""
@@ -199,7 +199,7 @@ class TaskMemory:
         if collection_name is not None:
             tasks = [item for item in tasks if item.request.collection_name == collection_name]
         ordered = sorted(tasks, key=lambda item: (item.updated_at, item.created_at), reverse=True)
-        page = ordered[offset : offset + limit]
+        page = ordered[offset: offset + limit]
         items = [
             TaskSummaryItem(
                 task_id=item.task_id,

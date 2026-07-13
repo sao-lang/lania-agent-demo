@@ -6,20 +6,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any
 
-from app.models.query import CitationItem
-from app.rag.observability import TraceRecorder
-from app.rag.vector_store import ChromaClientFactory
-from app.services.sqlite_store import SQLiteStateStore
-from app.services.state import InMemoryState
 from app.services.graph_service_parts._typing import GraphServiceTypingMixin
-from app.types import DocumentRecord, GraphEdgeRecord, GraphNodeRecord
+from app.types import DocumentRecord, GraphEdgeRecord
+
 
 class GraphExtractionMixin(GraphServiceTypingMixin):
     """放图谱抽取里和实体、关系识别相关的逻辑。"""
@@ -155,7 +149,7 @@ class GraphExtractionMixin(GraphServiceTypingMixin):
             start = cleaned.find('{')
             end = cleaned.rfind('}')
             if start >= 0 and end > start:
-                cleaned = cleaned[start : end + 1]
+                cleaned = cleaned[start: end + 1]
         try:
             payload = json.loads(cleaned)
         except Exception:

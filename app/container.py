@@ -75,7 +75,6 @@ from app.agents.tools.coding_tools import ExtractCodeIssuesTool, RunCodeAnalysis
 from app.core.config import Settings
 from app.harness.hooks import EventBus
 from app.harness.trace_hook import MemoryHook, TraceHook
-from app.harness.execution import ExecutionHarness
 from app.harness.guardrails import GuardrailEngine
 from app.harness.model_router import ModelRouter
 from app.harness.policy import PolicyEngine

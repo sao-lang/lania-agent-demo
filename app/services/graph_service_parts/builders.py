@@ -7,19 +7,14 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
-from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from app.models.query import CitationItem
-from app.rag.observability import TraceRecorder
-from app.rag.vector_store import ChromaClientFactory
-from app.services.sqlite_store import SQLiteStateStore
-from app.services.state import InMemoryState
 from app.services.graph_service_parts._typing import GraphServiceTypingMixin
 from app.types import DocumentRecord, GraphEdgeRecord, GraphNodeRecord
+
 
 class GraphBuilderMixin(GraphServiceTypingMixin):
     """放图谱节点、边和引用结果的组装逻辑。"""

@@ -8,16 +8,13 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
 from time import sleep, time
-from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, Union, cast
 from uuid import uuid4
 
-from app.core.bucketing import infer_bucket
 from app.core.config import Settings
 from app.core.errors import bad_request_error
 from app.models.eval import (
@@ -44,21 +41,16 @@ from app.models.eval import (
     DocumentAnalysisTrendResponse,
     DocumentAnalysisTrendSubAgentItem,
     DocumentAnalysisTrendToolItem,
-    EvalStrategyConfig,
     EvalTaskResponse,
-    RagasCompareMetricItem,
     RagasCompareRequest,
     RagasCompareResponse,
     RagasCompareStrategyResult,
     RagasEvalRequest,
-    ReplayBucketStats,
-    ReplayCompareMetricItem,
     ReplayCompareRequest,
     ReplayCompareResponse,
     ReplayStrategySummary,
 )
 from app.models.artifact import ReportArtifactContent
-from app.models.query import QueryRequest
 from app.models.task import TaskRequest
 from app.rag.observability import TraceEvent, TraceRecorder
 from app.services.eval_service_parts.compare_helpers import EvalCompareMixin
@@ -70,8 +62,7 @@ from app.services.state import InMemoryState
 from app.services.task_service import TaskService
 
 if TYPE_CHECKING:
-    from datasets import Dataset
-    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    pass
 
 DocumentAnalysisOutputFormat = Literal['markdown', 'json', 'markdown+json']
 
@@ -389,7 +380,7 @@ class EvalService(EvalCompareMixin, EvalTaskRunnerMixin, EvalRagasReportMixin):
             collection_name=collection_name,
             gate_status=gate_status,
         )
-        page = reports[offset : offset + limit]
+        page = reports[offset: offset + limit]
         return DocumentAnalysisBenchmarkHistoryResponse(
             items=[self._build_document_analysis_report_summary(item) for item in page],
             total=len(reports),
@@ -593,7 +584,7 @@ class EvalService(EvalCompareMixin, EvalTaskRunnerMixin, EvalRagasReportMixin):
         if review_status is not None and review_status.strip():
             items = [item for item in items if item.review_status == review_status.strip()]
         total = len(items)
-        paged = items[offset : offset + limit]
+        paged = items[offset: offset + limit]
         return ManagedDocumentAnalysisBaselineListResponse(
             total=total,
             limit=limit,
@@ -626,7 +617,7 @@ class EvalService(EvalCompareMixin, EvalTaskRunnerMixin, EvalRagasReportMixin):
         audits = self._load_managed_document_analysis_baseline_audits()
         if entry_id is not None and entry_id.strip():
             audits = [item for item in audits if item.entry_id == entry_id.strip()]
-        page = audits[offset : offset + limit]
+        page = audits[offset: offset + limit]
         return ManagedDocumentAnalysisBaselineAuditListResponse(
             total=len(audits),
             limit=limit,
@@ -1168,7 +1159,6 @@ class EvalService(EvalCompareMixin, EvalTaskRunnerMixin, EvalRagasReportMixin):
         raw = json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(raw, list):
             raise ValueError('document analysis benchmark dataset must be a JSON array')
-
 
         dataset_entries: list[dict[str, Any]] = []
         for index, item in enumerate(raw, start=1):

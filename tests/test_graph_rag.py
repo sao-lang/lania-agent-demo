@@ -1,9 +1,7 @@
 """图谱增强检索测试，验证文档图构建、图谱引用回填以及 LLM 回退策略。"""
 
-import tempfile
 import unittest
 from datetime import datetime, timezone
-from pathlib import Path
 
 from app.models.query import CitationItem
 from app.services.graph_service import GraphService

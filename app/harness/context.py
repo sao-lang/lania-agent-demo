@@ -33,7 +33,7 @@ class ContextHarness:
     def build_context(self, workflow_state: dict[str, Any], step_id: str | None = None) -> ContextBundle:
         """为当前步骤生成最小上下文切片。"""
         return self.task_context_builder.build_context(workflow_state, step_id)
-    
+
     def build_optimized_context(self, workflow_state: dict[str, Any], step_id: str | None = None) -> ContextOptimizationResult:
         """为当前步骤生成优化后的上下文切片，包含完整的优化信息。"""
         return self.task_context_builder.build_optimized_context(workflow_state, step_id)

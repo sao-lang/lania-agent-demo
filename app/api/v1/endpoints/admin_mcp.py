@@ -6,7 +6,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.container import AppContainer
-from app.core.auth import RequirePermission
 from app.models.admin import McpServerConfig, McpServerCreateRequest
 from app.services.mcp_manager import McpServerStatus
 
@@ -15,8 +14,10 @@ router = APIRouter(prefix="/admin/mcp", tags=["admin"])
 
 def get_container():
     from fastapi import Request
+
     async def _get(request: Request):
         return request.app.state.container
+
     return _get
 
 

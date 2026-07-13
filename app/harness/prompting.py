@@ -73,7 +73,10 @@ class PromptBuilder:
                 template_id='extract_key_points',
                 version='v1',
                 step_type='analyze',
-                output_schema='{"summary": str, "key_findings": [{"title": str, "summary": str, "citation_ids": [str], "tags": [str]}], "open_questions": [str], "confidence": float}',
+                output_schema=(
+                    '{"summary": str, "key_findings": [{"title": str, "summary": str, '
+                    '"citation_ids": [str], "tags": [str]}], "open_questions": [str], "confidence": float}'
+                ),
                 content='你是 Document Analysis Agent 的分析模块。请只输出严格 JSON，不要输出额外解释、Markdown 或代码块。\n'
                         '输出 schema: {schema}\n'
                         '规则:\n'
@@ -105,7 +108,10 @@ class PromptBuilder:
                 template_id='draft_report',
                 version='v1',
                 step_type='draft_artifact',
-                output_schema='{"summary": str, "key_findings": [dict], "risks": [dict], "open_questions": [str], "confidence": float, "report_markdown": str, "report_json": dict}',
+                output_schema=(
+                    '{"summary": str, "key_findings": [dict], "risks": [dict], '
+                    '"open_questions": [str], "confidence": float, "report_markdown": str, "report_json": dict}'
+                ),
                 content='你是 Document Analysis Agent 的报告生成模块。请只输出严格 JSON，不要输出额外解释。\n'
                         '输出 schema: {schema}\n'
                         '规则:\n'
@@ -202,7 +208,7 @@ class PromptBuilder:
         """
         template_id = self._step_to_template_id(step)
         template = self.get_template(template_id)
-        
+
         if template is None:
             template = PromptTemplate(
                 template_id=template_id,
@@ -214,7 +220,7 @@ class PromptBuilder:
 
         template_params = self._build_template_params(template, context, grounding, policy, kwargs)
         rendered_content = template.content.format(**template_params)
-        
+
         token_count = self._estimate_tokens(rendered_content)
 
         return PromptRenderResult(
@@ -276,10 +282,10 @@ class PromptBuilder:
             params['evidence'] = self._format_evidence(context.evidence_slice)
             params['documents'] = self._format_documents(context.state_slice.get('document_context_documents', []))
             params['missing_aspects'] = self._format_missing_aspects(context)
-            
+
             memory_slice = context.memory_slice or {}
             params['open_questions'] = ', '.join(memory_slice.get('missing_aspects', []))
-            
+
             if context.artifact_slice:
                 params['summary'] = str(context.artifact_slice.get('summary') or '')
                 params['key_findings'] = str(context.artifact_slice.get('key_findings') or [])
@@ -290,7 +296,7 @@ class PromptBuilder:
             params['alignment_score'] = str(grounding.alignment_score if hasattr(grounding, 'alignment_score') else 0.0)
             params['unsupported_claims'] = ', '.join(grounding.unsupported_claims)
             params['coverage_gaps'] = ', '.join(grounding.coverage_gaps)
-            
+
             evidence_ids = set()
             for claim in getattr(grounding, 'claims', []):
                 evidence_ids.update(claim.citation_ids)

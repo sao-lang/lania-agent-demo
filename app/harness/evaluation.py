@@ -188,7 +188,7 @@ class EvaluationHarness:
                     order_index=order_index,
                 )
             )
-        paged_items = ordered_items[offset : offset + limit]
+        paged_items = ordered_items[offset: offset + limit]
         return DocumentAnalysisBaselineRegistryResponse(
             collection_name=request.collection_name,
             instructions=request.instructions,

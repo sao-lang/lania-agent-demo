@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-import yaml
 
 from app.models.admin import AgentCreateRequest, AgentDefinition
 from app.services.sqlite_store import SQLiteStateStore

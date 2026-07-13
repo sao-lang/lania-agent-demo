@@ -90,7 +90,7 @@ class LocalRepositoryCapability(RepositoryCapability):
             raise FileNotFoundError(request.path)
         lines = path.read_text(encoding='utf-8').splitlines()
         start_index = request.start_line - 1
-        selected = lines[start_index : start_index + request.max_lines]
+        selected = lines[start_index: start_index + request.max_lines]
         end_line = start_index + len(selected)
         truncated = end_line < len(lines)
         return RepositoryReadFileResult(

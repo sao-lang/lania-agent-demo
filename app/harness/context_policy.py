@@ -46,30 +46,30 @@ class ContextPolicy(BaseModel):
     """特定 step 的上下文策略配置。"""
     step_type: StepType | str
     description: str = ''
-    
+
     evidence_top_k: int = Field(default=6, ge=0, le=20)
     evidence_relevance_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
-    
+
     memory_limit: int = Field(default=3, ge=0, le=10)
     reflection_limit: int = Field(default=2, ge=0, le=5)
     artifact_memory_limit: int = Field(default=2, ge=0, le=5)
-    
+
     artifact_scope: Literal['full', 'summary', 'questions', 'none'] = 'summary'
-    
+
     document_limit: int = Field(default=6, ge=1, le=20)
     risk_limit: int = Field(default=5, ge=0, le=10)
-    
+
     compression_enabled: bool = True
     compression_max_sentences: int = Field(default=3, ge=1, le=10)
     compression_max_chars: int = Field(default=1200, ge=100, le=5000)
-    
+
     token_budget: int = Field(default=8000, ge=100, le=32000)
     budget_priority: list[ContextSourceType] = Field(
         default_factory=lambda: [ContextSourceType.EVIDENCE, ContextSourceType.STATE, ContextSourceType.MEMORY, ContextSourceType.ARTIFACT]
     )
-    
+
     selection_rules: list[ContextSelectionRule] = Field(default_factory=list)
-    
+
     @classmethod
     def for_step(cls, step_id: str) -> 'ContextPolicy':
         """根据 step_id 获取预设的上下文策略。"""
@@ -175,7 +175,7 @@ class ContextPolicy(BaseModel):
             ),
         }
         return step_mapping.get(step_id, cls(step_type=step_id))
-    
+
     def get_selection_rule(self, source_type: ContextSourceType) -> ContextSelectionRule:
         """获取特定来源类型的选取规则。"""
         for rule in self.selection_rules:
@@ -187,7 +187,7 @@ class ContextPolicy(BaseModel):
             relevance_threshold=self.evidence_relevance_threshold if source_type == ContextSourceType.EVIDENCE else 0.0,
             max_chars=self._get_default_max_chars(source_type),
         )
-    
+
     def _get_default_top_k(self, source_type: ContextSourceType) -> int:
         """返回指定来源类型的默认条目上限。"""
 
@@ -198,7 +198,7 @@ class ContextPolicy(BaseModel):
             ContextSourceType.STATE: 10,
         }
         return defaults.get(source_type, 5)
-    
+
     def _get_default_max_chars(self, source_type: ContextSourceType) -> int:
         """返回指定来源类型的默认字符预算。"""
 

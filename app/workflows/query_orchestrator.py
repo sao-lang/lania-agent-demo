@@ -269,7 +269,7 @@ class QueryWorkflowOrchestrator:
         if recoverable_only:
             records = [item for item in records if item.get('recoverable')]
         records.sort(key=lambda item: item['created_at'], reverse=True)
-        sliced = records[offset : offset + limit]
+        sliced = records[offset: offset + limit]
         return [self._to_query_run_summary(item) for item in sliced]
 
     def get_query_run(self, run_id: str) -> QueryRunDetail | None:

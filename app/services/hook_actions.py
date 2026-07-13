@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from app.agents.tools.base import ToolExecutionError
 from app.harness.hooks import EventPayload
-from app.services.hook_loader import FileHook, HookAction
+from app.services.hook_loader import HookAction
 
 logger = logging.getLogger(__name__)
 

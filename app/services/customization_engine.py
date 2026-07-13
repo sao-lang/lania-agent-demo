@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from app.services.skill_manager import SkillManager
     from app.harness.hooks import EventBus
 
-    from app.core.config import Settings
 
 from app.services.instructions_manager import InstructionsManager
 

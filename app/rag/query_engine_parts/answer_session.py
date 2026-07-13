@@ -6,31 +6,17 @@
 
 from __future__ import annotations
 
-import json
 import re
-from collections.abc import Generator, Iterator
+from collections.abc import Generator
 from datetime import datetime, timezone
-from time import perf_counter
 from typing import Any
 
-from llama_index.core import VectorStoreIndex
-from llama_index.core.chat_engine import CondenseQuestionChatEngine
 from llama_index.core.llms import ChatMessage, MessageRole
-from llama_index.core.memory import ChatMemoryBuffer
 
-from app.core.config import Settings
-from app.models.query import ChatRequest, CitationItem, QueryRequest, QueryResponse
-from app.models.session import SessionDetail, SessionMessage, SessionSummaryItem, SessionSummaryResponse
-from app.rag.llamaindex_components import build_llm, build_metadata_filters, build_vector_store
-from app.rag.observability import TraceRecorder
-from app.rag.retrieval import RagRetrievalService
-from app.services.answer_service import AnswerService
-from app.services.query_preprocess_service import QueryPreprocessService
-from app.services.semantic_cache import SemanticCacheService
-from app.services.sqlite_store import SQLiteStateStore
-from app.services.state import InMemoryState
+from app.models.query import CitationItem, QueryRequest
 from app.rag.query_engine_parts._typing import QueryEngineTypingMixin
 from app.types import MetadataFilters as MetadataFiltersMap, SSEEvent, SessionMessageRecord, SessionRecord
+
 
 class QueryEngineAnswerSessionMixin(QueryEngineTypingMixin):
     """封装查询引擎中的回答增强、会话组装与摘要相关辅助逻辑。"""
@@ -326,7 +312,7 @@ class QueryEngineAnswerSessionMixin(QueryEngineTypingMixin):
             compressed = messages
             increment = 0
         else:
-            retained = messages[-self.SUMMARY_KEEP_RECENT :]
+            retained = messages[-self.SUMMARY_KEEP_RECENT:]
             compressed = messages[:-self.SUMMARY_KEEP_RECENT]
             increment = len(compressed)
         summary = self._build_session_summary(session.get('summary'), compressed)

@@ -280,7 +280,7 @@ class TaskService:
         if tenant_id is not None and tenant_id.strip():
             items = [item for item in items if item.tenant_id == tenant_id.strip()]
         total = len(items)
-        paged = items[offset : offset + limit]
+        paged = items[offset: offset + limit]
         return PolicyProfileListResponse(
             total=total,
             limit=limit,

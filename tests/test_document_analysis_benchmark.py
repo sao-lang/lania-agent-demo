@@ -805,17 +805,19 @@ class DocumentAnalysisBenchmarkTests(unittest.TestCase):
                 offset=offset,
             )
         )
-        container.eval_service.list_managed_document_analysis_baselines = (
-            lambda kind=None, status=None, collection_name=None, binding_policy_name=None, binding_instruction_substring=None, limit=20, offset=0: self.service.list_managed_document_analysis_baselines(
-                kind=kind,
-                status=status,
-                collection_name=collection_name,
+
+        def _list_baselines(
+            kind=None, status=None, collection_name=None,
+            binding_policy_name=None, binding_instruction_substring=None,
+            limit=20, offset=0,
+        ):
+            return self.service.list_managed_document_analysis_baselines(
+                kind=kind, status=status, collection_name=collection_name,
                 binding_policy_name=binding_policy_name,
                 binding_instruction_substring=binding_instruction_substring,
-                limit=limit,
-                offset=offset,
+                limit=limit, offset=offset,
             )
-        )
+        container.eval_service.list_managed_document_analysis_baselines = _list_baselines
         container.eval_service.register_document_analysis_baseline = self.service.register_document_analysis_baseline
         container.eval_service.update_managed_document_analysis_baseline = self.service.update_managed_document_analysis_baseline
         container.eval_service.delete_managed_document_analysis_baseline = self.service.delete_managed_document_analysis_baseline

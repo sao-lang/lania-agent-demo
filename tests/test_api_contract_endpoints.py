@@ -1,6 +1,7 @@
 """API 合同端点测试，验证健康检查、合同列表、接口搜索和合同读取等 HTTP 行为。"""
 
 import importlib
+import json
 import sys
 import tempfile
 import unittest
@@ -17,7 +18,14 @@ class FakeContainer:
     def __init__(self) -> None:
         root = Path(tempfile.mkdtemp())
         (root / 'openapi.json').write_text(
-            '{"openapi":"3.0.0","info":{"title":"Demo API","version":"v1"},"paths":{"/health":{"get":{"operationId":"getHealth","summary":"health endpoint","tags":["system"]}},"/documents":{"post":{"operationId":"createDocument","summary":"create document","tags":["documents"]}}}}',
+            json.dumps({
+                'openapi': '3.0.0',
+                'info': {'title': 'Demo API', 'version': 'v1'},
+                'paths': {
+                    '/health': {'get': {'operationId': 'getHealth', 'summary': 'health endpoint', 'tags': ['system']}},
+                    '/documents': {'post': {'operationId': 'createDocument', 'summary': 'create document', 'tags': ['documents']}},
+                },
+            }),
             encoding='utf-8',
         )
         self.local_api_contract_capability = build_api_contract_capability(root)

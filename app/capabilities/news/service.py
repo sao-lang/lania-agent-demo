@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+import httpx
 
 from dataclasses import dataclass
 from datetime import datetime, timezone

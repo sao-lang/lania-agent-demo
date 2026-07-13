@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from app.models.query import CitationItem, QueryRequest, QueryResponse
+    from app.models.query import CitationItem, QueryResponse
     from app.rag.query_engine import RagQueryEngine
     from app.types import SessionMessageRecord, SessionRecord
 
@@ -37,9 +37,11 @@ class QueryWorkflowRuntime(Protocol):
     def check_guardrails(self, question: str, payload: Any, trace_context: str) -> dict[str, Any]:
         """执行输入护栏检查，并返回结构化护栏状态。"""
         ...
+
     def empty_redaction_state(self, enabled: bool) -> dict[str, Any]:
         """构造一份空的脱敏状态字典。"""
         ...
+
     def sanitize_text(
         self,
         text: str,
@@ -50,6 +52,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[str, dict[str, Any]]:
         """对问题、上下文或答案文本做脱敏，并返回更新后的脱敏状态。"""
         ...
+
     def sanitize_citations(
         self,
         citations: list["CitationItem"],
@@ -58,12 +61,15 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[list["CitationItem"], dict[str, Any]]:
         """对引用项做脱敏或裁剪，并返回公开可展示的引用列表。"""
         ...
+
     def question_for_storage(self, question: str, guardrail_state: dict[str, Any]) -> str:
         """根据护栏结果生成适合落库保存的问题文本。"""
         ...
+
     def guardrail_block_message(self) -> str:
         """返回护栏拦截时面向用户的标准提示语。"""
         ...
+
     def build_blocked_query_response(
         self,
         payload: Any,
@@ -71,6 +77,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> "QueryResponse":
         """基于护栏状态构造被拦截场景下的标准查询响应。"""
         ...
+
     def public_guardrail_state(
         self,
         guardrail_state: dict[str, Any],
@@ -89,6 +96,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple["QueryResponse" | None, dict[str, Any]]:
         """查询语义缓存，并返回命中响应及命中元数据。"""
         ...
+
     def store_semantic_cache(
         self,
         payload: Any,
@@ -106,9 +114,11 @@ class QueryWorkflowRuntime(Protocol):
     def graph_trace_flags(self, payload: Any) -> dict[str, Any]:
         """提取图检索相关的追踪标志位。"""
         ...
+
     def prepare_retrieval_question(self, question: str, use_query_rewrite: bool, trace_context: str) -> str:
         """生成用于检索的主问题文本。"""
         ...
+
     def resolve_rewrite_info(
         self,
         question: str,
@@ -117,6 +127,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[str, dict[str, Any] | None]:
         """返回改写后的检索问题及对应改写元数据。"""
         ...
+
     def maybe_apply_multi_rewrite(
         self,
         payload: Any,
@@ -126,6 +137,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[list[str], dict[str, Any] | None]:
         """在启用多改写时生成多组候选检索问题。"""
         ...
+
     def maybe_apply_multi_query(
         self,
         payload: Any,
@@ -135,6 +147,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[list[str], dict[str, Any] | None]:
         """在启用多查询时生成多路检索问题列表。"""
         ...
+
     def maybe_apply_hyde(
         self,
         payload: Any,
@@ -144,6 +157,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[str, dict[str, Any] | None]:
         """在启用 HyDE 时生成假设文档查询及其元数据。"""
         ...
+
     def empty_corrective_info(self) -> dict[str, Any]:
         """返回空的 Corrective RAG 信息字典。"""
         ...
@@ -157,15 +171,19 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[list[str], dict[str, Any]]:
         """把引用列表整理为回答阶段可直接消费的上下文片段。"""
         ...
+
     def use_context_compression(self, payload: Any) -> bool:
         """判断当前请求是否启用上下文压缩。"""
         ...
+
     def use_pii_redaction(self, payload: Any) -> bool:
         """判断当前请求是否启用 PII 脱敏。"""
         ...
+
     def build_chat_retrieval_question(self, session_id: str, current_question: str) -> str:
         """基于会话历史构造聊天模式下的检索问题。"""
         ...
+
     def retrieve_citations(
         self,
         payload: Any,
@@ -174,6 +192,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> list["CitationItem"]:
         """执行证据检索，并返回结构化引用列表。"""
         ...
+
     def stream_citation_snapshot(
         self,
         citations: list["CitationItem"],
@@ -181,6 +200,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> list[dict[str, Any]]:
         """抽取适合流式事件发送的引用快照。"""
         ...
+
     def generate_answer_with_mode(
         self,
         *,
@@ -191,6 +211,7 @@ class QueryWorkflowRuntime(Protocol):
     ) -> tuple[str, str]:
         """生成最终答案，并返回答案模式。"""
         ...
+
     def maybe_apply_corrective_rag(
         self,
         *,
@@ -208,24 +229,31 @@ class QueryWorkflowRuntime(Protocol):
     def message(self, role: str, content: str) -> "SessionMessageRecord":
         """构造一条会话消息记录。"""
         ...
+
     def get_or_create_session(self, session_id: str) -> "SessionRecord":
         """读取或初始化一个会话记录。"""
         ...
+
     def save_session(self, session_id: str) -> None:
         """持久化指定会话。"""
         ...
+
     def auto_summarize_session(self, session_id: str) -> None:
         """在需要时自动触发会话摘要压缩。"""
         ...
+
     def chunk_text_for_stream(self, text: str, chunk_size: int = 24) -> list[str]:
         """把长答案切成适合 SSE 输出的小文本块。"""
         ...
+
     def build_qa_prompt(self, question: str, contexts: list[str], *, use_guardrails: bool) -> str:
         """基于问题和上下文构造回答提示词。"""
         ...
+
     def self_rag_retry_enabled(self) -> bool:
         """返回当前运行时是否允许 Self-RAG 重试。"""
         ...
+
     def self_rag_min_grounding_confidence(self) -> float:
         """返回触发 Self-RAG 决策时使用的最小 grounding 置信度阈值。"""
         ...

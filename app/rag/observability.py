@@ -441,9 +441,6 @@ class TraceRecorder:
             step_count_by_task[task_id] = step_count_by_task.get(task_id, 0) + 1
             step_name = str(item.get('step') or 'unknown')
             step_breakdown[step_name] = step_breakdown.get(step_name, 0) + 1
-        finalized_by_task: dict[str, dict] = {
-            str(item.get('task_id') or ''): item for item in finalized_events if str(item.get('task_id') or '').strip()
-        }
         review_failed = [item for item in review_events if not item.get('passed')]
         unsupported_claim_total = sum(int(item.get('unsupported_claim_count', 0) or 0) for item in review_events)
         artifact_versions_by_task: dict[str, int] = {}

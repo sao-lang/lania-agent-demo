@@ -17,7 +17,6 @@ from app.capabilities.sandbox_execute.base import (
     CommandExecutionRequest,
     CommandExecutionResult,
     CommandSecurityPolicy,
-    SandboxExecuteCapability,
     build_sandboxed_policy,
 )
 
@@ -204,7 +203,7 @@ class LocalSandboxExecuteCapability:
         if not policy.enable_network:
             # 阻断网络：清空代理变量，设置 http_proxy 为空
             for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
-                         "ALL_PROXY", "all_proxy", "no_proxy", "NO_PROXY"):
+                        "ALL_PROXY", "all_proxy", "no_proxy", "NO_PROXY"):
                 env.pop(var, None)
             env["http_proxy"] = ""
             env["https_proxy"] = ""

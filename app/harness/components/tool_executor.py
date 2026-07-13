@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from app.agents.tools.base import ToolContext, ToolExecutionError
 from app.agents.tools.registry import ToolRegistry
 from app.core.config import Settings
-from app.harness.models import ContextBundle, ExecutionAttempt, ExecutionPolicy
+from app.harness.models import ExecutionAttempt, ExecutionPolicy
 from app.harness.sandbox import ToolSandbox
 
 

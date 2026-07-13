@@ -32,7 +32,7 @@ class LocalArtifactCapability(ArtifactCapability):
         if request.status is not None:
             artifacts = [item for item in artifacts if item.status == request.status]
         ordered = sorted(artifacts, key=lambda item: (item.updated_at, item.created_at, item.version), reverse=True)
-        page = ordered[request.offset : request.offset + request.limit]
+        page = ordered[request.offset: request.offset + request.limit]
         return ArtifactListResult(
             items=[
                 ArtifactSummaryItem(

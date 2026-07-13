@@ -1,7 +1,6 @@
 """验证查询流式输出的事件顺序、SSE 编码与会话写回。"""
 
 import asyncio
-import json
 import tempfile
 import time
 import unittest

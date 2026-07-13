@@ -63,7 +63,7 @@ class DataAnalysisCapability:
                 schemas[t["name"]] = schema
 
         schema_text = "\n".join(
-            f"表 {name}：{' '.join(f\"{c['name']} {c['type']}\" for c in cols[:8])}"
+            f"表 {name}：{' '.join(c['name'] + ' ' + c['type'] for c in cols[:8])}"
             for name, cols in schemas.items()
         )
         events.append(AgentEvent.delta(f"表结构：\n{schema_text}\n"))
@@ -154,7 +154,7 @@ class DataAnalysisCapability:
     ) -> str:
         """使用 LLM 生成分析 SQL 和代码。"""
         schema_desc = "\n".join(
-            f"表 {name}: {' '.join(f\"{c['name']}({c['type']})\" for c in cols[:8])}"
+            f"表 {name}: {' '.join(c['name'] + '(' + c['type'] + ')' for c in cols[:8])}"
             for name, cols in schemas.items()
         )
         prompt = (

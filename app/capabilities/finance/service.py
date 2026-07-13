@@ -4,6 +4,7 @@
 """
 
 from __future__ import annotations
+import httpx
 
 import re
 from dataclasses import dataclass
@@ -151,7 +152,10 @@ class FinanceCapability:
         days = period_map.get(period, 30)
 
         try:
-            url = f'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={normalized}&scale=240&ma=no&datalen={days}'
+            url = (
+                'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php'
+                f'/CN_MarketData.getKLineData?symbol={normalized}&scale=240&ma=no&datalen={days}'
+            )
             resp = client.get(url)
             resp.raise_for_status()
             data = resp.json()

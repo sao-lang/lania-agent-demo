@@ -131,7 +131,7 @@ class FeedbackService:
 
         items.sort(key=lambda item: item.created_at, reverse=True)
         total = len(items)
-        paged = items[offset : offset + limit]
+        paged = items[offset: offset + limit]
         return FeedbackListResponse(items=paged, total=total, limit=limit, offset=offset)
 
     def list_eval_candidates(
@@ -164,7 +164,7 @@ class FeedbackService:
 
         items.sort(key=lambda item: item.created_at, reverse=True)
         total = len(items)
-        paged = items[offset : offset + limit]
+        paged = items[offset: offset + limit]
         return EvalCandidateListResponse(items=paged, total=total, limit=limit, offset=offset)
 
     def export_eval_dataset(self, payload: FeedbackEvalRunRequest) -> FeedbackEvalDatasetResponse:

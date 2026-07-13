@@ -375,7 +375,11 @@ class TaskWorkflowOrchestrator:
             kind=cast(Optional[str], state.get('artifact_type')) or 'document_analysis_report',
             skill_name=cast(Optional[str], state.get('skill_name')) or latest_task.request.task_type,
             final_artifact_id=latest_task.final_artifact_id,
-            artifact_type=final_artifact.artifact_type if final_artifact is not None else cast(Optional[str], state.get('artifact_type')) or 'document_analysis_report',
+            artifact_type=(
+                final_artifact.artifact_type
+                if final_artifact is not None
+                else cast(Optional[str], state.get('artifact_type')) or 'document_analysis_report'
+            ),
             artifact_status=final_artifact.status if final_artifact is not None else 'final',
             artifact_version=final_artifact.version if final_artifact is not None else None,
             artifact_ids=list(latest_task.artifact_ids),

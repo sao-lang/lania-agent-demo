@@ -12,37 +12,26 @@ import types
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
-from typing import TYPE_CHECKING, Any, cast
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
-from app.core.config import Settings
-from app.core.bucketing import infer_bucket
 from app.core.errors import bad_request_error
 from app.models.eval import (
     DocumentAnalysisBenchmarkResponse,
     EvalStrategyConfig,
-    EvalTaskResponse,
     RagasCompareMetricItem,
-    RagasCompareRequest,
     RagasCompareResponse,
     RagasCompareStrategyResult,
     RagasEvalRequest,
     ReplayBucketStats,
-    ReplayCompareMetricItem,
-    ReplayCompareRequest,
     ReplayCompareResponse,
     ReplayStrategySummary,
 )
 from app.models.query import QueryRequest
-from app.rag.observability import TraceRecorder
-from app.services.query_service import QueryService
-from app.services.sqlite_store import SQLiteStateStore
 from app.services.eval_service_parts._typing import EvalServiceTypingMixin
-from app.services.state import InMemoryState
 
 if TYPE_CHECKING:
-    from datasets import Dataset
     from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
 
 class EvalRagasReportMixin(EvalServiceTypingMixin):
     """放 Ragas 运行时依赖、结果写盘和策略回放这些实现细节。"""
@@ -365,8 +354,6 @@ class EvalRagasReportMixin(EvalServiceTypingMixin):
 
         class ChatVertexAI:  # pragma: no cover - compatibility shim
             """占位类，用于满足旧版本依赖的导入路径要求。"""
-
-            pass
 
         setattr(module, 'ChatVertexAI', ChatVertexAI)
         sys.modules['langchain_community.chat_models.vertexai'] = module
