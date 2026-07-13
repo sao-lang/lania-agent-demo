@@ -34,6 +34,18 @@ class RagSystemQueryInput(BaseModel):
     use_query_rewrite: bool = Field(default=True, description="是否启用查询改写")
 
 
+class RagSystemGraphQueryInput(BaseModel):
+    question: str = Field(description="用户问题")
+    collection_name: str = Field(description="知识库名称")
+    top_k: int = Field(default=5, ge=1, le=20, description="返回结果数量")
+    session_id: str | None = Field(default=None, description="会话 ID（多轮对话用）")
+    use_graph_rag: bool = Field(default=False, description="是否启用图谱增强检索")
+    use_hybrid_retrieval: bool = Field(default=False, description="是否启用混合检索")
+    use_corrective_rag: bool = Field(default=True, description="是否启用 Self-RAG 纠偏（默认开启）")
+    use_query_rewrite: bool = Field(default=True, description="是否启用查询改写")
+    use_multi_query: bool = Field(default=False, description="是否启用多路查询")
+
+
 class RagSystemIngestInput(BaseModel):
     collection_name: str = Field(description="目标知识库名称")
     file_path: str = Field(description="文件路径")
@@ -113,6 +125,53 @@ class RagSystemQueryTool(_BaseRagSystemTool):
             use_hybrid_retrieval=payload.use_hybrid_retrieval,
             use_corrective_rag=payload.use_corrective_rag,
             use_query_rewrite=payload.use_query_rewrite,
+        ))
+        return {
+            'answer': response.answer,
+            'citations': [
+                {
+                    'chunk_id': c.chunk_id,
+                    'text': c.text[:200],
+                    'source': c.source,
+                    'score': c.score,
+                }
+                for c in response.citations
+            ],
+            'retrieved_count': response.retrieved_count,
+            'latency_ms': response.latency_ms,
+        }
+
+
+class RagSystemGraphQueryTool(_BaseRagSystemTool):
+    """通过独立 RAG 系统 + LangGraph 工作流执行检索问答。
+
+    相比 ``rag_system_query``，这个工具走 LangGraph 有状态图编排：
+    - 条件路由（护栏/缓存/反思）
+    - Self-RAG 自我评估与纠偏
+    - 语义缓存短路
+    - Step 级别生命周期追踪
+    """
+
+    name = 'rag_system_graph_query'
+    description = '通过 LangGraph 工作流执行检索问答（支持 Self-RAG 反思）'
+    timeout_ms = 30000
+    retry_policy = ToolRetryPolicy(max_attempts=1, backoff_ms=300)
+    input_model = RagSystemGraphQueryInput
+    output_model = dict
+
+    def run(self, payload: RagSystemGraphQueryInput, context: ToolContext) -> dict:
+        rag = self._get_rag_system(context)
+        from app.rag_system.models.query import QueryRequest
+        response = rag.graph_query(QueryRequest(
+            question=payload.question,
+            collection_name=payload.collection_name,
+            top_k=payload.top_k,
+            session_id=payload.session_id,
+            use_graph_rag=payload.use_graph_rag,
+            use_hybrid_retrieval=payload.use_hybrid_retrieval,
+            use_corrective_rag=payload.use_corrective_rag,
+            use_query_rewrite=payload.use_query_rewrite,
+            use_multi_query=payload.use_multi_query,
         ))
         return {
             'answer': response.answer,
