@@ -81,6 +81,19 @@ def create_app() -> FastAPI:
 
     # 所有版本化 API 均通过统一前缀挂载，避免入口文件感知各个子路由细节。
     app.include_router(api_router, prefix=settings.api_prefix)
+
+    # ── RAG 系统独立 API（阶段一） ──
+    # 在主应用中挂载独立 RAG 系统的 API 路由，提供与旧端点并行的新入口。
+    # 旧端点仍可用（通过 app.api.router 注册），新端点通过 /api/v1/rag 前缀访问。
+    # 移除条件：旧 RAG 端点确认不再使用后。
+    if hasattr(container, 'rag_system') and container.rag_system:
+        app.include_router(
+            container.rag_system.api_router,
+            prefix=f"{settings.api_prefix}/rag",
+        )
+        app.state.rag_system_container = container.rag_system
+    # ─────────────────────────────────────
+
     return app
 
 

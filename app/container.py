@@ -77,8 +77,15 @@ from app.agents.tools.translation_tools import TranslateTextTool, DetectLanguage
 from app.agents.tools.chart_tools import GenerateChartTool
 from app.agents.tools.web_search_tools import WebSearchTool
 from app.agents.tools.coding_tools import ExtractCodeIssuesTool, RunCodeAnalysisTool
+from app.agents.tools.rag_system_tools import (
+    RagSystemRetrieveTool,
+    RagSystemQueryTool,
+    RagSystemIngestTool,
+)
 
 from app.core.config import Settings
+from app.rag_system.container import RagContainer as RagSystemContainer
+from app.rag_system.config.settings import RagSettings
 from app.harness.hooks import EventBus
 from app.harness.trace_hook import MemoryHook, TraceHook
 from app.harness.guardrails import GuardrailEngine
@@ -235,6 +242,12 @@ class AppContainer:
         self.url_fetch_capability = UrlFetchCapability()
         self.translation_capability = TranslationCapability()
         self.sandbox_execute_capability = LocalSandboxExecuteCapability(settings=settings)
+        # ── 独立 RAG 系统（阶段一） ──────────────
+        self.rag_system = RagSystemContainer(
+            settings=RagSettings.from_app_settings(settings),
+        )
+        # ───────────────────────────────────────
+
         self.external_services: dict[str, Any] = {
             'weather': self.weather_capability,
             'finance': self.finance_capability,
@@ -244,6 +257,7 @@ class AppContainer:
             'url_fetch': self.url_fetch_capability,
             'translation': self.translation_capability,
             'sandbox_execute': self.sandbox_execute_capability,
+            'rag_system': self.rag_system,
         }
         # ───────────────────────────────────────
 
@@ -416,6 +430,10 @@ class AppContainer:
             # ── Coding Agent 工具 ──
             ExtractCodeIssuesTool(),
             RunCodeAnalysisTool(),
+            # ── RAG 系统工具（独立 RAG 引擎）──
+            RagSystemRetrieveTool(),
+            RagSystemQueryTool(),
+            RagSystemIngestTool(),
             # ── 扩展清单工具（大模型按需加载扩展内容）──
             LoadExtensionTool(self.extension_catalog),
             LoadRuleTool(self.extension_catalog),
