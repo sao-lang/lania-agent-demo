@@ -23,17 +23,26 @@ AgentMode = Literal["chat", "plan", "autopilot", "auto"]
 # ──────────────────────────────────────────────
 
 AgentEventType = Literal[
-    "intent",           # 意图识别结果
-    "plan",             # 生成计划 (plan 模式)
-    "plan_confirmed",   # 用户确认计划
-    "step_start",       # 步骤开始
-    "step_end",         # 步骤结束
-    "tool_call",        # 工具调用
-    "tool_result",      # 工具结果
-    "delta",            # 流式文本增量
-    "completed",        # 完成
-    "error",            # 错误
-    "ask_user",         # 询问用户 (autopilot 模式)
+    "intent",               # 意图识别结果
+    "plan",                 # 生成计划 (plan 模式)
+    "plan_confirmed",       # 用户确认计划
+    "step_start",           # 步骤开始
+    "step_end",             # 步骤结束
+    "tool_call",            # 工具调用
+    "tool_result",          # 工具结果
+    "delta",                # 流式文本增量
+    "completed",            # 完成
+    "error",                # 错误
+    "ask_user",               # 询问用户 (autopilot 模式)
+    "step_consent_required",  # 步骤需要用户确认
+    "step_consent_granted",   # 用户已确认
+    "step_consent_denied",    # 用户已拒绝
+    "step_disclosed",         # 步骤已披露
+    "client_command",         # 下发到客户端执行的命令
+    "mode_switched",          # 模式被升级
+    "source_activated",       # 激活知识来源
+    "context_risk_warning",   # 会话上下文风险警告
+    "safety_blocked",         # 安全策略拒绝
 ]
 
 

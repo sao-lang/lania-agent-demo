@@ -17,6 +17,11 @@ class IntentMatcher:
 
     第一层：关键词快速匹配
     第二层：LLM 分类（可选，当关键词匹配置信度不足时）
+
+    .. deprecated::
+        将在未来版本中废弃，由 `harness.brain.intent_recognizer.IntentRecognizer` 替代。
+        新代码应使用 IntentRecognizer，它提供结构化的 `IntentDecision` 输出，
+        支持双层识别策略（规则引擎 + LLM）和知识来源分类。
     """
 
     # 关键词规则：capability → (关键词列表, 权重)

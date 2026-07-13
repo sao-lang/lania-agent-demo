@@ -1,0 +1,97 @@
+# 安全策略配置
+
+safety:
+  # 检查点定义
+  checkpoints:
+    pre_tool_call:
+      - data_destruction
+      - data_exfiltration
+      - privilege_escalation
+      - system_tampering
+      - remote_code_execution
+    pre_tool_output_to_llm:
+      - tool_output_content
+    post_tool_call:
+      - session_context
+
+  # 禁用的策略
+  disabled: []
+
+  # 策略配置
+  policy_config:
+    data_destruction:
+      level: block
+      recursive_flags: ["-r", "-R", "--recursive", "-rf", "-Rf", "-fr"]
+      destruction_keywords:
+        - "rm"
+        - "del"
+        - "delete"
+        - "remove"
+        - "erase"
+        - "DROP"
+        - "TRUNCATE"
+        - "DELETE FROM"
+        - "format"
+        - "mkfs"
+        - "dd"
+        - "shred"
+        - "wipe"
+
+    data_exfiltration:
+      level: block
+      sensitive_extensions:
+        - ".env"
+        - ".pem"
+        - ".key"
+        - ".crt"
+        - ".credentials"
+        - ".secret"
+        - ".config"
+        - ".sql"
+        - ".sqlite"
+        - ".db"
+        - ".log"
+
+    privilege_escalation:
+      level: warn
+
+    system_tampering:
+      level: block
+      protected_paths:
+        - "/etc/"
+        - "/boot/"
+        - "/proc/"
+        - "/sys/"
+        - "/var/log/"
+        - "~/.ssh/"
+        - "~/.gnupg/"
+        - "C:\\Windows\\"
+        - "C:\\Program Files\\"
+        - "HKLM\\"
+        - "System32\\"
+
+    remote_code_execution:
+      level: block
+
+    tool_output_content:
+      level: block
+      injection_patterns:
+        - "(?i)(ignore|disregard|forget).{0,20}(previous|above|instruction)"
+        - "(?i)(you are now|act as|pretend to be)"
+        - "(?i)(system prompt|developer message|hidden instruction)"
+
+    session_context:
+      level: warn
+      risk_weights:
+        read_repository_file: 1
+        search_repository: 1
+        list_repository_files: 1
+        web_search: 2
+        web_fetch: 3
+        rag_retrieve_evidence: 1
+        shell_command: 5
+        query_database: 4
+        sandbox_exec: 3
+      warn_threshold: 6
+      block_threshold: 10
+      window_size: 5

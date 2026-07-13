@@ -19,6 +19,11 @@ from app.capabilities.code_review import CodeReviewCapability
 from app.capabilities.data_analysis import DataAnalysisCapability
 from app.capabilities.web_search import WebSearchCapability
 from app.capabilities.coding import CodingCapability
+from app.harness.brain.agent_loop import AgentLoop
+from app.harness.brain.intent_recognizer import IntentRecognizer
+from app.harness.brain.mode_router import ModeRouter
+from app.harness.brain.models import RouteContext
+from app.harness.brain.step_executor import StepExecutor
 from app.models.agent import (
     AgentChatRequest,
     AgentCommandRequest,
@@ -45,6 +50,10 @@ class AgentService:
     2. 识别意图 → 匹配 Capability
     3. 路由到对应执行器
     4. 产生 SSE 事件流
+
+    .. note::
+        新路径（brain 组件可用时）: IntentRecognizer → ModeRouter → AgentLoop
+        旧路径（brain 组件不可用，向后兼容）: IntentMatcher → _resolve_mode → _handle_*_mode
     """
 
     def __init__(
@@ -65,6 +74,11 @@ class AgentService:
         agent_def_manager: AgentDefManager | None = None,
         catalog: ExtensionCatalog | None = None,
         customization_engine: Any | None = None,
+        # 新 brain 组件（可选注入）
+        intent_recognizer: IntentRecognizer | None = None,
+        mode_router: ModeRouter | None = None,
+        agent_loop: AgentLoop | None = None,
+        step_executor: StepExecutor | None = None,
     ) -> None:
         self._registry = registry
         self._intent_matcher = intent_matcher
@@ -86,6 +100,11 @@ class AgentService:
             agent_def_manager=agent_def_manager,
             mcp_manager=mcp_manager,
         )
+        # 新 brain 组件
+        self._intent_recognizer = intent_recognizer
+        self._mode_router = mode_router
+        self._agent_loop = agent_loop
+        self._step_executor = step_executor
 
         # 注册 Capability 提供者
         self._registry.register_provider(ChatCapability(llm=llm))
@@ -155,6 +174,97 @@ class AgentService:
                     args={"connected": True},
                 )
 
+        # 3. 选择流程：新 brain 路径 vs 旧路径
+        if self._use_brain_path():
+            async for event in self._process_via_brain(
+                request, session, start_time,
+            ):
+                yield event
+        else:
+            async for event in self._process_legacy(
+                request, session, start_time,
+            ):
+                yield event
+
+    async def _process_via_brain(
+        self,
+        request: AgentChatRequest,
+        session: Any,
+        start_time: float,
+    ) -> AsyncIterator[AgentEvent]:
+        """新路径：使用 brain 组件处理请求。"""
+        assert self._intent_recognizer is not None
+        assert self._mode_router is not None
+        assert self._agent_loop is not None
+
+        history = [m.model_dump() for m in session.history]
+        available_caps = [c.name for c in self._registry.list_enabled()]
+
+        # 3a. 统一意图识别
+        decision = await self._intent_recognizer.recognize(
+            message=request.message,
+            history=history,
+            available_capabilities=available_caps,
+        )
+        yield AgentEvent(type="intent", data=decision.model_dump())
+
+        # 3b. 模式路由
+        route_context = RouteContext(
+            user_prefers_confirmation=(session.mode == "plan_confirm"),
+        )
+        route_result = await self._mode_router.route(decision, route_context)
+        mode = route_result.mode.value
+
+        if route_result.upgrade_reason:
+            yield AgentEvent(type="mode_switched", data={
+                "from": decision.suggested_mode,
+                "to": mode,
+                "reason": route_result.upgrade_reason,
+            })
+
+        # 3c. 工具列表
+        available_tools = []
+        if self._tool_registry:
+            try:
+                available_tools = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": s.name,
+                            "description": s.description or s.name,
+                            "parameters": s.input_schema,
+                        },
+                    }
+                    for s in self._tool_registry.list_descriptions()
+                ]
+            except Exception:
+                pass
+
+        # 3d. 执行 AgentLoop
+        async for event in self._agent_loop.run(
+            message=request.message,
+            decision=decision,
+            mode=mode,
+            history=history,
+            available_tools=available_tools,
+            session=session,
+        ):
+            yield event
+
+        # 保存会话
+        session.history.append(Message(role="user", content=request.message))
+        await self._session_manager.save(session)
+
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        yield AgentEvent.completed(duration_ms=duration_ms)
+
+    async def _process_legacy(
+        self,
+        request: AgentChatRequest,
+        session: Any,
+        start_time: float,
+    ) -> AsyncIterator[AgentEvent]:
+        """旧路径：使用 IntentMatcher + _resolve_mode + _handle_*_mode。"""
         # 3. 识别 Capability
         capability = request.capability
         intent: IntentMatch | None = None
@@ -228,6 +338,21 @@ class AgentService:
             capability=capability,
             duration_ms=duration_ms,
             mode=request.mode,
+        )
+
+    # ── 路径选择 ──────────────────────────────
+
+    def _use_brain_path(self) -> bool:
+        """判断是否使用新 brain 路径。
+
+        brain 路径在所有 brain 组件都可用时启用。
+        向后兼容：当 brain 组件未注入时，使用旧路径。
+        """
+        return (
+            self._intent_recognizer is not None
+            and self._mode_router is not None
+            and self._agent_loop is not None
+            and self._llm is not None
         )
 
     # ── 扩展清单 + 系统提示词 ──────────────────

@@ -46,6 +46,7 @@ class BaseCommandTool(AgentTool):
     name = ""
     version = "v1"
     risk_level = "high"
+    execution_target = "client"
     sandbox_mode = "process_isolated"
     timeout_ms = 30000
     retry_policy = ToolRetryPolicy(max_attempts=1, backoff_ms=500)

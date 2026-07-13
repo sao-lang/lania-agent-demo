@@ -25,7 +25,8 @@ ToolErrorType = Literal[
     'fatal_error',
 ]
 ToolFallbackAction = Literal['retry', 'fallback', 'degrade', 'skip_with_gap', 'abort']
-ToolRiskLevel = Literal['low', 'medium', 'high']
+ToolRiskLevel = Literal['low', 'medium', 'high', 'critical']
+ToolExecutionTarget = Literal['server', 'client']
 ToolSandboxMode = Literal['inline', 'thread_isolated', 'process_isolated']
 
 
@@ -57,6 +58,7 @@ class ToolSchema(BaseModel):
     retry_policy: ToolRetryPolicy = Field(default_factory=ToolRetryPolicy)
     trace_fields: list[str] = Field(default_factory=list)
     risk_level: ToolRiskLevel = 'low'
+    execution_target: ToolExecutionTarget = 'server'
     sandbox_mode: ToolSandboxMode = 'inline'
 
 

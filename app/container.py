@@ -30,6 +30,12 @@ from app.services.file_instruction_manager import FileInstructionManager
 from app.services.instructions_manager import InstructionsManager
 from app.services.auth_manager import AuthManager
 from app.services.config_store import ConfigStore
+from app.harness.brain.agent_loop import AgentLoop
+from app.harness.brain.intent_recognizer import IntentRecognizer
+from app.harness.brain.mode_router import ModeRouter
+from app.harness.brain.step_executor import StepExecutor
+from app.harness.safety.engine import SafetyEngine
+from app.services.consent_store import ConsentStore
 from app.services.intent_matcher import IntentMatcher
 from app.services.llm_config_manager import LlmConfigManager
 from app.services.llm_router import LlmRouter
@@ -311,6 +317,26 @@ class AppContainer:
         )
         # ─────────────────────────────────────
 
+        # ── Brain 组件（意图识别 + 模式路由 + 安全策略） ──
+        self.safety_engine = SafetyEngine()
+        self.consent_store = ConsentStore()
+        self.step_executor = StepExecutor(
+            tool_registry=self.task_tool_registry,
+            harness=None,
+            consent_store=self.consent_store,
+            safety_engine=self.safety_engine,
+        )
+        self.intent_recognizer = IntentRecognizer(llm=self.llm)
+        self.mode_router = ModeRouter()
+        self.agent_loop = AgentLoop(
+            llm=self.llm,
+            step_executor=self.step_executor,
+            intent_recognizer=self.intent_recognizer,
+            mode_router=self.mode_router,
+            tool_registry=self.task_tool_registry,
+        )
+        # ────────────────────────────────────────
+
         self.agent_service = AgentService(
             registry=self.capability_registry,
             intent_matcher=self.intent_matcher,
@@ -323,11 +349,16 @@ class AppContainer:
             repository=self.local_repository_capability,
             database=self.local_database_capability,
             llm=self.llm,
-            tool_registry=None,
+            tool_registry=self.task_tool_registry,
             skill_manager=self.skill_manager,
             agent_def_manager=self.agent_def_manager,
             catalog=self.extension_catalog,
             customization_engine=self.customization_engine,
+            # Brain 组件
+            intent_recognizer=self.intent_recognizer,
+            mode_router=self.mode_router,
+            agent_loop=self.agent_loop,
+            step_executor=self.step_executor,
         )
         self.task_planner = TaskPlanner()
         self.evidence_agent = EvidenceAgent(self.task_memory, self.trace)

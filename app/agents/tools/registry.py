@@ -55,6 +55,7 @@ class ToolRegistry:
             timeout_ms=int(getattr(tool, 'timeout_ms', 30000)),
             retry_policy=getattr(tool, 'retry_policy', ToolRetryPolicy()),
             risk_level=getattr(tool, 'risk_level', 'low'),
+            execution_target=getattr(tool, 'execution_target', 'server'),
             sandbox_mode=getattr(tool, 'sandbox_mode', 'inline'),
             trace_fields=list(
                 getattr(tool, 'trace_fields', ['tool_call_id', 'task_id', 'tool_name', 'duration_ms', 'status'])
