@@ -31,7 +31,7 @@ Lania Agent Runtime：
 
 ## 🏗️ 整体架构
 
-系统采用**六层分层架构**，从外到内依次是：
+系统采用**六层 + 大脑架构**，从外到内依次是：
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
@@ -44,11 +44,18 @@ Lania Agent Runtime：
 │                 Workflow Layer (工作流层)                    │
 │   LangGraph 编排 / Orchestrator / Skill / Step Lifecycle   │
 ├────────────────────────────────────────────────────────────┤
+│              ════ Brain Layer (大脑层) ════                 │
+│   IntentRecognizer / ModeRouter / AgentLoop                │
+│   StepExecutor / SafetyEngine                              │
+│   ← 大脑在 Harness 中：大脑决定怎么调，Harness 约束怎么执行 → │
+├────────────────────────────────────────────────────────────┤
 │                Capability Layer (能力层)                     │
-│   Tool / SubAgent / Facade Adapter / Capability Routing      │
+│   Tool / SubAgent / Facade / CatalogTool                    │
+│   CustomizationEngine                                      │
 ├────────────────────────────────────────────────────────────┤
 │                Governance Layer (治理层)                     │
 │   Policy / Guardrail / EventBus Hook / Sandbox / Budget      │
+│   SafetyEngine（可插拔安全策略 7 种）                        │
 ├────────────────────────────────────────────────────────────┤
 │                  Infra Layer (基础设施层)                    │
 │   LLM Provider / Vector Store / SQLite / Sandbox Worker     │
@@ -58,15 +65,18 @@ Lania Agent Runtime：
 ### 核心执行主链
 
 ```text
-请求 → Entry → TaskSpec → Orchestrator → LangGraph 节点 → ExecutionHarness.run_tool()
+请求 → Entry → TaskSpec → Orchestrator → LangGraph 节点
+  → [Brain Layer] IntentRecognizer → ModeRouter → AgentLoop
+    → StepExecutor（含 SafetyEngine 检查）
+      → ExecutionHarness.run_tool()
                                                     ↓
                                                EventBus ──→ HookRegistry → Trace/Memory/Checkpoint
            (每次 step/tool 事件都广播，治理逻辑通过 Hook 横向切面)
 ```
 
-**一句话主链**：`TaskSpec → LangGraph → ExecutionHarness → Tool → Facade`
+**一句话主链**：`TaskSpec → LangGraph → Brain → ExecutionHarness → Tool → Facade`
 
-这条链之外不应有第二条平行主链。LangGraph 是唯一的工作流引擎。
+这条链之外不应有第二条平行主链。LangGraph 是唯一的工作流引擎，Brain Layer 是感知与决策中心。
 
 ---
 
@@ -81,7 +91,7 @@ app/
 │   └── v1/endpoints/
 │       ├── query.py              # query / chat / stream 接口
 │       ├── tasks.py              # 任务 CRUD 接口
-│       ├── agent.py              # 统一 Agent 对话入口（新增）
+│       ├── agent.py              # 统一 Agent 对话入口
 │       ├── documents.py          # 文档上传/导入
 │       ├── collections.py        # 知识库集合管理
 │       ├── sessions.py           # 会话管理
@@ -89,12 +99,25 @@ app/
 │       ├── feedback.py           # 反馈接口
 │       ├── health.py             # 健康检查/metrics
 │       ├── capabilities.py       # Capability 列表
-│       └── admin_*/              # 管理后台接口（LLM/Skill/Agent/Prompt/MCP）
+│       ├── admin_agents.py       # Agent 定义管理
+│       ├── admin_hooks.py        # Hook 配置管理
+│       ├── admin_instructions.py # 系统指令管理
+│       ├── admin_file_instructions.py # 文件指令管理
+│       └── admin_*/              # 其他管理后台接口（LLM/Skill/Prompt/MCP）
 
 ├── services/                     # [Entry+Infra] 业务服务入口
 │   ├── query_service.py          # query/chat 请求入口服务
 │   ├── task_service.py           # task 任务入口服务
 │   ├── agent_service.py          # 统一 Agent 服务（处理 mode/capability）
+│   ├── customization_engine.py   # 定制化原语引擎
+│   ├── extension_catalog.py      # 扩展清单（LLM 可浏览）
+│   ├── frontmatter_parser.py     # YAML frontmatter 解析
+│   ├── instructions_manager.py   # 系统指令管理器
+│   ├── file_instruction_manager.py # 文件级指令管理器
+│   ├── hook_loader.py            # FileHook JSON 加载
+│   ├── hook_adapter.py           # FileHook → RuntimeHook 适配
+│   ├── hook_actions.py           # Hook 动作执行引擎
+│   ├── consent_store.py          # 用户确认记录存储
 │   ├── session_manager.py        # 会话管理器（持久化到 SQLite）
 │   ├── document_service.py       # 文档导入服务
 │   ├── collection_service.py     # 集合管理服务
@@ -113,7 +136,16 @@ app/
 │   ├── plan_executor.py          # plan 模式执行计划
 │   └── auth_manager.py           # 认证管理
 
-├── harness/                      # [Governance] Harness 治理骨架
+├── harness/                      # [Brain + Governance] 大脑与治理层
+│   ├── brain/                    # 大脑层 — 感知 + 决策
+│   │   ├── agent_loop.py         # AgentLoop：LLM 驱动工具调用循环
+│   │   ├── intent_recognizer.py  # 统一意图识别（双层策略）
+│   │   ├── mode_router.py        # 模式路由（chat/plan/autopilot）
+│   │   ├── step_executor.py      # 步骤执行器 + SafetyEngine 安全检查
+│   │   └── models.py             # 大脑层数据模型
+│   ├── safety/                   # 安全引擎 — 可插拔策略体系
+│   │   ├── engine.py             # SafetyEngine + SafetyPolicy ABC
+│   │   └── policies/             # 内置安全策略（7 种）
 │   ├── execution.py              # ExecutionHarness facade：完整工具执行治理链入口
 │   ├── context.py                # ContextHarness facade：上下文构建入口
 │   ├── policy.py                 # PolicyEngine：权限策略检查
@@ -158,6 +190,7 @@ app/
 │       ├── registry.py           # ToolRegistry：工具注册/查找/执行
 │       ├── base.py               # BaseTool / ToolSchema / ToolContext：工具基类
 │       ├── defaults.py           # build_runtime_rag_tools()：默认 RAG 工具集
+│       ├── catalog_tools.py      # load_extension / load_rule 工具
 │       ├── rag_tools.py          # rag_* 工具族（5 个）
 │       ├── command_tools.py      # ShellCommandTool / RepositoryCommandTool
 │       ├── repository_tools.py   # 仓库工具（list/search/read）
@@ -208,7 +241,8 @@ app/
 │   ├── task.py                   # TaskSpec / TaskRun / TaskDetail
 │   ├── query.py                  # QueryRequest / QueryResponse / ChatRequest
 │   ├── runtime_contracts.py      # MemoryRecord / PromptSpec / ResultContract
-│   └── artifact.py               # Artifact / EvidencePack
+│   ├── artifact.py               # Artifact / EvidencePack
+│   └── customization.py          # 定制化原语 Schema（Frontmatter 定义）
 
 ├── core/                         # [Infra] 核心基础设施
 │   ├── config.py                 # Settings：全局配置（Pydantic）
@@ -216,19 +250,43 @@ app/
 │   ├── errors.py                 # 异常处理注册
 │   └── auth.py                   # 认证中间件
 
+├── .agents/                      # [Config] 定制化原语文件
+│   ├── AGENTS.md                 # 系统指令
+│   ├── instructions/             # 文件级指令（*.instructions.md）
+│   ├── prompts/                  # Prompt 模板（*.prompt.md）
+│   ├── skills/                   # Skill 定义（SKILL.md + rules/）
+│   ├── agents/                   # Agent 定义（*.agent.md）
+│   └── hooks/                    # Hook 配置（*.json）
+
+├── config/                       # [Config]
+│   ├── safety.yaml               # 安全策略配置
+│   └── harness-policy-profiles.yaml
+
 tests/                            # 单元测试
-scripts/                          # 评测脚本（RAGAS / benchmark / regression / trend）
+├── test_brain_models.py          # 大脑层模型测试
+├── test_intent_recognizer.py     # 意图识别测试
+├── test_mode_router.py           # 模式路由测试
+├── test_agent_loop.py            # Agent Loop 测试
+├── test_step_executor.py         # 步骤执行器测试
+├── test_safety_engine.py         # 安全引擎测试（含 7 策略）
+├── test_customization_primitives.py # 定制化原语测试
+└── ...                           # 其他已有测试
+
+scripts/                          # 工具脚本
+├── generate_primitive.py         # 原语文件生成器
+└── ...                           # 其他评测脚本
+
 docs/                             # 项目文档
 ├── 架构.md                       # 本项目完整分层架构与模块通信总览
-├── agent-platform-architecture.md # Agent Platform 架构设计（Mode + Capability）
+├── intent-recognition-module-design.md # 意图识别模块设计文档（2026-07-13 新增）
+├── agent-customization-primitives-design.md # 定制化原语系统设计文档（2026-07-13 新增）
+├── admin-resources-unified-design.md # 管理后台统一设计文档（2026-07-13 新增）
+├── skill-storage-refactor-plan.md # Skill 存储重构计划（2026-07-13 新增）
+├── agent-platform-architecture.md # Agent Platform 架构设计
 ├── agent-platform-roadmap.md     # 实施路线图
 ├── memory-system-redesign.md     # 记忆系统改造方案
-├── harnessed-react-agent-redesign-checklist.md # 重构完成清单
-├── taskspec-query-graph-followups.md # TaskSpec 收口后续清单
 ├── architecture/
-│   ├── README.md                 # 架构文档索引
-│   ├── agent-capability-management-design.md # 能力管理设计
-│   └── harness-capability-integration.md # 能力与 Harness 集成
+│   └── README.md                 # 架构文档索引
 └── operations/
     └── remote-provider-runbook.md # 远程 Provider 运维手册
 ```
@@ -284,6 +342,100 @@ docs/                             # 项目文档
 | `artifact` | 产物管理 | 所有任务 |
 | `sandbox_execute` | 沙盒命令执行 | （预留） |
 | `web_fetch` | 网页抓取 | web_search |
+
+---
+
+---
+
+## 🧠 Brain Layer（大脑层）— 新增（2026-07-13）
+
+> **核心命题**：大脑在 Harness 中。大脑决定怎么调用，Harness 约束怎么执行。
+
+大脑层由三个子系统组成：**感知层**（IntentRecognizer）+ **决策层**（AgentLoop）+ **安全层**（SafetyEngine）。
+
+### 感知层：IntentRecognizer
+
+双层策略意图识别：
+
+1. **QuickHeuristicClassifier**（<1ms）— 规则引擎，覆盖约 80% 常见情况
+2. **LLMIntentClassifier**（~200ms）— LLM 处理复杂/边缘情况
+
+输出 `IntentDecision`（knowledge_sources, complexity, risk_level, suggested_mode），一次性设定整场会话上下文。
+
+### 决策层：AgentLoop + StepExecutor
+
+`AgentLoop` 是 LLM 驱动的多轮工具调用循环：LLM 决定 → `StepExecutor` 执行 → 结果回传。
+
+`StepExecutor` 负责：读取工具风险声明 → `SafetyEngine` 执行前检查 → 执行（服务端沙箱/客户端下发）→ `SafetyEngine` 输出检查 → 用户确认（需同意时）。
+
+### 安全层：SafetyEngine
+
+5 层可插拔安全策略体系，通过 `config/safety.yaml` 配置：
+
+| 策略 | 检查内容 |
+|------|---------|
+| 数据销毁防护 | 防止破坏性操作（rm/drop/delete） |
+| 数据外泄防护 | 防止敏感数据泄露 |
+| 权限提升防护 | 防止越权行为 |
+| 远程代码执行防护 | 防止恶意代码执行 |
+| 会话风险评估 | 会话级风险检测 |
+| 系统篡改防护 | 防止系统配置篡改 |
+| 工具输出内容安全 | 工具输出内容安全审查 |
+
+```python
+class SafetyPolicy(ABC):
+    name: str
+    def check(self, context: SafetyContext) -> SafetyDecision: ...
+```
+
+### 关键文件
+
+| 文件 | 职责 |
+|------|------|
+| `app/harness/brain/intent_recognizer.py` | 统一意图识别 |
+| `app/harness/brain/agent_loop.py` | LLM 驱动工具调用循环 |
+| `app/harness/brain/mode_router.py` | 模式路由 |
+| `app/harness/brain/step_executor.py` | 步骤执行 + 安全检查 |
+| `app/harness/brain/models.py` | 大脑层数据模型 |
+| `app/harness/safety/engine.py` | SafetyEngine |
+| `app/harness/safety/policies/*.py` | 7 个内置安全策略 |
+
+---
+
+## 📦 Agent 定制化原语系统 — 新增（2026-07-13）
+
+将 IDE 领域的 AI Agent 定制化原语映射到后端 Agent 运行时，构建一套完整的 **文件驱动 + API 可管理** 的扩展体系。
+
+### 支持的 7 种原语
+
+| 原语 | 文件形态 | 管理器 |
+|------|---------|--------|
+| **Instructions** | `.agents/AGENTS.md` | `InstructionsManager` |
+| **File Instructions** | `.agents/instructions/*.instructions.md` | `FileInstructionManager` |
+| **Prompts** | `.agents/prompts/*.prompt.md` | `PromptManager` |
+| **Skills** | `.agents/skills/<name>/SKILL.md` | `SkillManager` + `ExtensionCatalog` |
+| **Custom Agents** | `.agents/agents/*.agent.md` | `AgentDefManager` |
+| **Hooks** | `.agents/hooks/*.json` | `HookLoader` → `HookAdapter` → `HookRegistry` |
+| **MCP Servers** | `.agents/mcp.json` | `McpManager` |
+
+### 核心机制
+
+- **CustomizationEngine**（`app/services/customization_engine.py`）：Agent 初始化时自动扫描 `.agents/` 目录，加载所有原语并组装运行时上下文
+- **ExtensionCatalog**（`app/services/extension_catalog.py`）：给 LLM 提供轻量级扩展清单，通过 `load_extension` / `load_rule` 工具按需加载
+- **FrontmatterParser**（`app/services/frontmatter_parser.py`）：统一解析 YAML frontmatter + body
+- **Hook 系统**：JSON 配置的 FileHook → `RuntimeHook` 协议适配，支持 log/block/audit/notify/throttle/mutate_payload 等动作
+
+### 关键文件
+
+| 文件 | 职责 |
+|------|------|
+| `app/services/customization_engine.py` | 定制化原语引擎 |
+| `app/services/extension_catalog.py` | 扩展清单 |
+| `app/services/frontmatter_parser.py` | YAML frontmatter 解析 |
+| `app/services/hook_loader.py` / `hook_adapter.py` / `hook_actions.py` | Hook 系统 |
+| `app/services/consent_store.py` | 用户确认记录存储 |
+| `app/models/customization.py` | 定制化原语 Schema |
+| `app/agents/tools/catalog_tools.py` | load_extension / load_rule 工具 |
 
 ---
 
