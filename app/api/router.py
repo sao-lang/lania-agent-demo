@@ -29,6 +29,9 @@ from app.api.v1.endpoints.admin_agents import router as admin_agents_router
 from app.api.v1.endpoints.admin_prompts import router as admin_prompts_router
 from app.api.v1.endpoints.admin_mcp import router as admin_mcp_router
 from app.api.v1.endpoints.admin_settings import router as admin_settings_router
+from app.api.v1.endpoints.admin_instructions import router as admin_instructions_router
+from app.api.v1.endpoints.admin_file_instructions import router as admin_file_instructions_router
+from app.api.v1.endpoints.admin_hooks import router as admin_hooks_router
 
 api_router = APIRouter()
 # 所有对外接口统一在这里完成分组装配，便于追踪 API 暴露面、前缀和标签组织方式。
@@ -55,3 +58,6 @@ api_router.include_router(admin_agents_router, tags=['admin'])
 api_router.include_router(admin_prompts_router, tags=['admin'])
 api_router.include_router(admin_mcp_router, tags=['admin'])
 api_router.include_router(admin_settings_router, tags=['admin'])
+api_router.include_router(admin_instructions_router, tags=['admin'])
+api_router.include_router(admin_file_instructions_router, tags=['admin'])
+api_router.include_router(admin_hooks_router, tags=['admin'])

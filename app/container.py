@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import Any, cast
 
 from app.agents.memory import TaskMemory
@@ -17,11 +18,16 @@ from app.agents.tools.analysis_tools import ExtractKeyPointsTool, ExtractRisksTo
 from app.agents.tools.artifact_tools import DraftReportTool, FinalizeReportTool, ReviewReportTool
 from app.agents.tools.command_tools import ShellCommandTool, RepositoryCommandTool
 from app.agents.tools.base import AgentTool
+from app.agents.tools.catalog_tools import LoadExtensionTool, LoadRuleTool
 from app.agents.tools.database_tools import DescribeDatabaseTableTool, ListDatabaseTablesTool, QueryDatabaseTool
 from app.agents.tools.defaults import build_runtime_rag_tools
 from app.capabilities.registry import build_default_registry
 from app.services.agent_def_manager import AgentDefManager
 from app.services.agent_service import AgentService
+from app.services.customization_engine import CustomizationEngine
+from app.services.extension_catalog import ExtensionCatalog
+from app.services.file_instruction_manager import FileInstructionManager
+from app.services.instructions_manager import InstructionsManager
 from app.services.auth_manager import AuthManager
 from app.services.config_store import ConfigStore
 from app.services.intent_matcher import IntentMatcher
@@ -243,7 +249,7 @@ class AppContainer:
         self.config_store = ConfigStore(
             db_path=settings.resolved_data_dir / "app.sqlite3",
         )
-        self.mcp_manager = McpManager()
+        self.mcp_manager = McpManager(persistence=self.persistence)
         self.auth_manager = AuthManager(config_store=self.config_store)
         self.llm_router = LlmRouter(
             config_store=self.config_store,
@@ -253,9 +259,9 @@ class AppContainer:
             config_store=self.config_store,
             llm_router=self.llm_router,
         )
-        self.skill_manager = SkillManager(config_store=self.config_store)
-        self.agent_def_manager = AgentDefManager(config_store=self.config_store)
-        self.prompt_manager = PromptManager(config_store=self.config_store)
+        self.skill_manager = SkillManager(persistence=self.persistence)
+        self.agent_def_manager = AgentDefManager(persistence=self.persistence)
+        self.prompt_manager = PromptManager(persistence=self.persistence)
         self.system_settings_manager = SystemSettingsManager(
             config_store=self.config_store,
         )
@@ -283,6 +289,29 @@ class AppContainer:
             persistence=self.persistence,
             task_memory=self.task_memory,
         )
+        # 创建扩展清单（大模型通过 load_extension / load_rule 按需加载）
+        self.extension_catalog = ExtensionCatalog(
+            skill_manager=self.skill_manager,
+            agent_def_manager=self.agent_def_manager,
+            mcp_manager=self.mcp_manager,
+        )
+
+        # ── 定制化原语系统 ───────────────────
+        self.instructions_manager = InstructionsManager()
+        self.file_instruction_manager = FileInstructionManager()
+        self.customization_engine = CustomizationEngine(
+            agents_dir=Path(".lania"),
+            skill_manager=self.skill_manager,
+            agent_def_manager=self.agent_def_manager,
+            prompt_manager=self.prompt_manager,
+            mcp_manager=self.mcp_manager,
+            event_bus=self.event_bus,
+            file_instruction_manager=self.file_instruction_manager,
+            instructions_manager=self.instructions_manager,
+            settings=settings,
+        )
+        # ─────────────────────────────────────
+
         self.agent_service = AgentService(
             registry=self.capability_registry,
             intent_matcher=self.intent_matcher,
@@ -296,6 +325,10 @@ class AppContainer:
             database=self.local_database_capability,
             llm=self.llm,
             tool_registry=None,
+            skill_manager=self.skill_manager,
+            agent_def_manager=self.agent_def_manager,
+            catalog=self.extension_catalog,
+            customization_engine=self.customization_engine,
         )
         self.task_planner = TaskPlanner()
         self.evidence_agent = EvidenceAgent(self.task_memory, self.trace)
@@ -353,6 +386,9 @@ class AppContainer:
             # ── Coding Agent 工具 ──
             ExtractCodeIssuesTool(),
             RunCodeAnalysisTool(),
+            # ── 扩展清单工具（大模型按需加载扩展内容）──
+            LoadExtensionTool(self.extension_catalog),
+            LoadRuleTool(self.extension_catalog),
         ):
             self.task_tool_registry.register(cast(AgentTool, tool))
         self.guardrail_engine = GuardrailEngine(self.task_tool_registry)

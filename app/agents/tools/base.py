@@ -119,6 +119,8 @@ class ToolContext:
     tool_call_id: str | None = None
     run_budget: Any | None = None
     model_router: ModelRouter | None = None
+    # ── 文件级指令（由 ExecutionHarness 在阶段 2 注入） ──
+    file_instructions: list[Any] | None = None
 
     def __getattr__(self, name: str) -> Any:
         if name == 'deps' or name.startswith('__'):

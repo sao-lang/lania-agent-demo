@@ -42,6 +42,9 @@ def create_app() -> FastAPI:
 
         # 在 lifespan 中再次挂载容器，确保测试场景和运行时都能从 app.state 读取依赖。
         app.state.container = container
+        # 初始化定制化原语引擎（扫描 .lania/ 目录，同步 Skills/Agents/Prompts/MCPs）
+        if hasattr(container, 'customization_engine') and container.customization_engine:
+            await container.customization_engine.initialize()
         try:
             yield
         finally:

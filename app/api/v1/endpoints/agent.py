@@ -107,3 +107,22 @@ async def set_session_mode(
     session_manager = container.session_manager
     await session_manager.set_mode(session_id, mode)
     return {"status": "ok", "session_id": session_id, "mode": mode}
+
+
+@router.put("/session/{session_id}/agent")
+async def set_session_agent(
+    session_id: str,
+    agent_name: str | None = None,
+    container: AppContainer = Depends(get_container()),
+):
+    """切换会话使用的 Agent 定义。
+
+    设置 agent_name 为 None 表示清除 Agent 选择（使用默认 Agent）。
+    """
+    session_manager = container.session_manager
+    await session_manager.set_agent_name(session_id, agent_name)
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "agent_name": agent_name,
+    }

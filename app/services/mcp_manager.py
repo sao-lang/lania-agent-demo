@@ -1,14 +1,22 @@
 """MCP 客户端管理器。
 
-管理后端的 MCP 客户端连接，支持连接外部 MCP Server 并暴露其工具。
-CLI/Web 将 MCP 配置透传给后端，后端统一管理连接生命周期。
+管理后端的 MCP 客户端连接，支持：
+- 连接外部 MCP Server（URL / STDIO）
+- 工具发现和注册
+- 工具调用路由
+- 持久化 Server 配置
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+from app.models.admin import McpServerConfig, McpServerCreateRequest
+from app.services.sqlite_store import SQLiteStateStore
 
 
 class McpToolDef(BaseModel):
@@ -24,7 +32,7 @@ class McpServerStatus(BaseModel):
     """MCP Server 连接状态。"""
 
     name: str
-    type: str  # stdio | url
+    server_type: str  # url | stdio
     status: str  # connected | disconnected | error
     tools_count: int = 0
     error: str | None = None
@@ -33,12 +41,88 @@ class McpServerStatus(BaseModel):
 class McpManager:
     """MCP 客户端管理器。
 
-    负责连接/断开外部 MCP Server，列出可用工具，调用工具。
+    负责：
+    - 管理 MCP Server 配置的 CRUD（持久化到 SQLite）
+    - 连接/断开外部 MCP Server
+    - 列出可用工具、调用工具
     """
 
-    def __init__(self) -> None:
-        self._servers: dict[str, Any] = {}
-        self._tools: dict[str, McpToolDef] = {}
+    def __init__(self, persistence: SQLiteStateStore | None = None) -> None:
+        self._persistence = persistence
+        self._servers: dict[str, Any] = {}         # 运行时连接状态
+        self._tools: dict[str, McpToolDef] = {}    # 已注册的工具
+
+    # ── 配置 CRUD（持久化）────────────────────
+
+    async def create_server(self, request: McpServerCreateRequest) -> McpServerConfig:
+        """创建 MCP Server 配置。"""
+        now = datetime.now()
+        config = McpServerConfig(
+            id=f"mcp-{uuid4().hex[:12]}",
+            name=request.name,
+            server_type=request.server_type,
+            url=request.url,
+            command=request.command,
+            args=request.args,
+            enabled=request.enabled,
+            status="disconnected",
+            created_at=now,
+            updated_at=now,
+        )
+        if self._persistence:
+            self._persistence.upsert_mcp_server(config.model_dump(mode="json"))
+        return config
+
+    async def update_server(self, mcp_id: str, request: McpServerCreateRequest) -> McpServerConfig:
+        """更新 MCP Server 配置。"""
+        existing = await self.get_server(mcp_id)
+        if existing is None:
+            raise ValueError(f"MCP server '{mcp_id}' not found")
+
+        now = datetime.now()
+        config = McpServerConfig(
+            id=mcp_id,
+            name=request.name,
+            server_type=request.server_type,
+            url=request.url,
+            command=request.command,
+            args=request.args,
+            enabled=request.enabled,
+            status=existing.status,
+            tools_count=existing.tools_count,
+            error=existing.error,
+            created_at=existing.created_at,
+            updated_at=now,
+        )
+        if self._persistence:
+            self._persistence.upsert_mcp_server(config.model_dump(mode="json"))
+        return config
+
+    async def get_server(self, mcp_id: str) -> McpServerConfig | None:
+        """按 id 获取 MCP Server 配置。"""
+        if self._persistence is None:
+            return None
+        payload = self._persistence.get_mcp_server(mcp_id)
+        if payload is None:
+            return None
+        return McpServerConfig(**payload)
+
+    async def list_servers_config(self) -> list[McpServerConfig]:
+        """列出所有 MCP Server 配置（从 DB）。"""
+        if self._persistence is None:
+            return []
+        payloads = self._persistence.list_mcp_servers()
+        return [McpServerConfig(**p) for p in payloads]
+
+    async def delete_server(self, mcp_id: str) -> None:
+        """删除 MCP Server 配置。"""
+        config = await self.get_server(mcp_id)
+        if config:
+            await self.disconnect(config.name)
+        if self._persistence:
+            self._persistence.delete_mcp_server(mcp_id)
+
+    # ── 连接管理 ──────────────────────────────
 
     async def connect(self, config: dict) -> list[McpToolDef]:
         """根据配置连接到 MCP Server。
@@ -49,9 +133,9 @@ class McpManager:
                     "mcpServers": {
                         "server-name": {
                             "type": "url" | "stdio",
-                            "url": "...",  # for type=url
-                            "command": "...",  # for type=stdio
-                            "args": [...],  # for type=stdio
+                            "url": "...",
+                            "command": "...",
+                            "args": [...],
                         }
                     }
                 }
@@ -68,7 +152,9 @@ class McpManager:
                 if server_type == "url":
                     await self._connect_url(name, sc["url"])
                 elif server_type == "stdio":
-                    await self._connect_stdio(name, sc.get("command", ""), sc.get("args", []))
+                    await self._connect_stdio(
+                        name, sc.get("command", ""), sc.get("args", []),
+                    )
                 else:
                     continue
 
@@ -79,16 +165,39 @@ class McpManager:
                 tools.extend(server_tools)
 
             except Exception as e:
-                # 单个 Server 连接失败不影响其他
                 self._servers[name] = {"status": "error", "error": str(e)}
 
         return tools
 
+    async def get_or_connect(self, mcp_id: str) -> list[McpToolDef]:
+        """按 ID 加载 MCP 配置并连接（如果尚未连接）。"""
+        config = await self.get_server(mcp_id)
+        if not config:
+            raise ValueError(f"MCP server '{mcp_id}' not found")
+
+        if config.name in self._servers:
+            return [
+                t for t in self._tools.values()
+                if t.server == config.name
+            ]
+
+        return await self.connect({
+            "mcpServers": {
+                config.name: {
+                    "type": config.server_type,
+                    "url": config.url,
+                    "command": config.command,
+                    "args": config.args,
+                }
+            }
+        })
+
     async def disconnect(self, name: str) -> None:
         """断开 MCP Server 连接。"""
         if name in self._servers:
-            # 清理工具
-            keys_to_remove = [k for k in self._tools if k.startswith(f"{name}:")]
+            keys_to_remove = [
+                k for k in self._tools if k.startswith(f"{name}:")
+            ]
             for k in keys_to_remove:
                 del self._tools[k]
             del self._servers[name]
@@ -99,7 +208,7 @@ class McpManager:
             await self.disconnect(name)
 
     async def list_servers(self) -> list[McpServerStatus]:
-        """列出所有 MCP Server 及状态。"""
+        """列出所有已连接的 MCP Server 及状态。"""
         statuses: list[McpServerStatus] = []
         for name, server in self._servers.items():
             tools_count = sum(
@@ -107,7 +216,7 @@ class McpManager:
             )
             statuses.append(McpServerStatus(
                 name=name,
-                type=server.get("type", "url"),
+                server_type=server.get("type", "url"),
                 status=server.get("status", "connected"),
                 tools_count=tools_count,
                 error=server.get("error"),
@@ -120,7 +229,6 @@ class McpManager:
 
     async def call_tool(self, tool_name: str, args: dict) -> Any:
         """调用 MCP 工具。"""
-        # 查找工具所在的 Server
         for key, tool in self._tools.items():
             if tool.name == tool_name:
                 server_name = key.split(":", 1)[0]
@@ -132,12 +240,16 @@ class McpManager:
     async def _connect_url(self, name: str, url: str) -> None:
         """通过 URL 连接 MCP Server (SSE)。"""
         # TODO: 实现 SSE MCP 客户端连接
-        self._servers[name] = {"type": "url", "url": url, "status": "connected"}
+        self._servers[name] = {
+            "type": "url", "url": url, "status": "connected",
+        }
 
     async def _connect_stdio(self, name: str, command: str, args: list[str]) -> None:
         """通过 STDIO 连接 MCP Server。"""
         # TODO: 实现 STDIO MCP 客户端连接
-        self._servers[name] = {"type": "stdio", "command": command, "args": args, "status": "connected"}
+        self._servers[name] = {
+            "type": "stdio", "command": command, "args": args, "status": "connected",
+        }
 
     async def _list_server_tools(self, name: str) -> list[McpToolDef]:
         """列出某个 Server 的工具。"""

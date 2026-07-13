@@ -124,6 +124,7 @@ class AgentChatRequest(BaseModel):
     capability: str | None = None          # null = 自动识别
     collection_name: str = "default"
     agent_name: str | None = None
+    agent_id: str | None = None            # Agent 定义 ID，用于加载 skills 和缓存
     model: str | None = None
     stream: bool = True
     mcp_config: dict | None = None         # MCP 配置透传

@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 from time import perf_counter
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from app.services.file_instruction_manager import FileInstructionManager
 
 from pydantic import BaseModel
 
@@ -53,6 +56,7 @@ class ExecutionHarness:
         model_router: ModelRouter | None = None,
         event_bus: EventBus | None = None,
         services: dict[str, Any] | None = None,
+        file_instruction_manager: FileInstructionManager | None = None,
     ) -> None:
         """初始化执行 facade 及其 policy/guardrail/sandbox/event_bus 组件。"""
 
@@ -70,6 +74,7 @@ class ExecutionHarness:
         self.policy_engine = policy_engine or PolicyEngine()
         self.sandbox_engine = sandbox_engine or ToolSandbox()
         self.model_router = model_router or ModelRouter()
+        self._file_inst_mgr = file_instruction_manager
         # 使用外部传入的 event_bus，或创建新的并注册默认 trace hook
         self.event_bus = event_bus
         if self.event_bus is None:
@@ -113,7 +118,18 @@ class ExecutionHarness:
         failure_action: str | None = None,
         fallback_factory: FallbackFactory | None = None,
     ) -> Any:
-        """执行单次工具调用，并在允许时应用统一降级逻辑。"""
+        """执行单次工具调用，并在允许时应用统一降级逻辑。
+
+        执行流水线（7 阶段模型）：
+        阶段 0: BEFORE_TOOL 事件（Hook 可阻断）
+        阶段 1: Guardrail 护栏检查
+        阶段 2: File Instructions 注入
+        阶段 3: Policy 权限检查
+        阶段 4: Sandbox 沙盒决策
+        阶段 5: Tool 执行（含重试/熔断/超时）
+        阶段 6: AFTER_TOOL / TOOL_FAILED 事件
+        阶段 7: 后处理（record_execution + record_runtime_summary）
+        """
         tool_call_id = f'tool-{uuid4().hex[:12]}'
         started = perf_counter()
         runtime_policy = self.policy_resolver.resolve(name, context_bundle, failure_action=failure_action)
@@ -126,9 +142,25 @@ class ExecutionHarness:
         retry_count = 0
         attempts = []
         sandbox_mode = 'inline'
+
+        # ── 阶段 0: BEFORE_TOOL 事件 ──
+        self.hooks.emit_before_tool(workflow_state, name, payload)
+
         try:
+            # ── 阶段 1: Guardrail ──
             tool_decision = self.guardrail_engine.validate_tool_call(name, payload, context_bundle.tool_options)
             self.guardrail_engine.raise_tool_error(tool_decision)
+
+            # ── 阶段 2: File Instructions 注入 ──
+            if self._file_inst_mgr:
+                file_paths = self._extract_file_paths(name, payload)
+                file_instructions = []
+                for fp in file_paths:
+                    file_instructions.extend(self._file_inst_mgr.match(fp))
+                workflow_state["_file_instructions"] = file_instructions
+
+            # ── 阶段 3: Policy ──
+            # 3a. Task 场景策略
             if self.hooks.has_task_request(workflow_state):
                 policy_decision = self.policy_engine.check_tool(workflow_state['task'].request, name, payload)
                 if not policy_decision.allowed:
@@ -139,6 +171,22 @@ class ExecutionHarness:
                         default_action='abort',
                         details=policy_decision.details,
                     )
+            # 3b. Agent 场景工具白名单
+            allowed_tools = workflow_state.get("_allowed_tools")
+            if allowed_tools is not None:
+                agent_decision = self.policy_engine.check_agent_tool(
+                    tool_name=name, allowed_tools=allowed_tools,
+                )
+                if not agent_decision.allowed:
+                    raise ToolExecutionError(
+                        code='policy_agent_tool_blocked',
+                        message=agent_decision.reason,
+                        error_type='permission_error',
+                        default_action='abort',
+                        details={"allowed_tools": allowed_tools},
+                    )
+
+            # ── 阶段 4: Sandbox ──
             schema = self.registry.describe(name)
             sandbox_decision = self.sandbox_engine.assess(
                 tool_name=name,
@@ -156,6 +204,8 @@ class ExecutionHarness:
                 )
             sandbox_mode = sandbox_decision.sandbox_mode
             warnings.append(f'sandbox:{sandbox_decision.sandbox_mode}:{sandbox_decision.risk_level}')
+
+            # ── 阶段 5: Tool 执行 ──
             outcome = self.tool_executor.execute(
                 name,
                 payload,
@@ -167,8 +217,24 @@ class ExecutionHarness:
             result = outcome.result
             retry_count = outcome.retry_count
             attempts = outcome.attempts
+
+            # ── 阶段 6: AFTER_TOOL 事件（成功路径）──
+            execution_result = ToolExecutionResult(
+                tool_name=name,
+                status='ok',
+                latency_ms=int((perf_counter() - started) * 1000),
+                retries=retry_count,
+                timeout_budget_ms=runtime_policy.timeout_budget_ms,
+                sandbox_mode=sandbox_mode,
+            )
+            self.hooks.emit_after_tool(workflow_state, execution_result)
+
             return result
+
         except ToolExecutionError as exc:
+            # ── 阶段 6: TOOL_FAILED 事件（失败路径）──
+            self.hooks.emit_tool_failed(workflow_state, name, str(exc))
+
             retry_count = max(retry_count, self.policy_resolver.derive_retry_count(exc))
             failure_category = self.policy_resolver.failure_category(exc)
             self.tool_executor.mark_circuit_failure(name, exc, runtime_policy=runtime_policy)
@@ -224,3 +290,38 @@ class ExecutionHarness:
             )
             self.hooks.record_runtime_summary(workflow_state, runtime_summary)
             self.hooks.record_execution(workflow_state, context_bundle.step_id, execution)
+
+    # ── 内部帮助方法 ──────────────────────────────
+
+    @staticmethod
+    def _extract_file_paths(name: str, payload: dict[str, Any]) -> list[str]:
+        """从工具调用的 payload 中推断操作的文件路径。
+
+        不同的工具参数名不同，这里识别常见的文件路径字段。
+        """
+        file_paths: list[str] = []
+
+        # 直接的文件路径参数
+        for key in ("file_path", "filepath", "path", "target_path", "source_path"):
+            val = payload.get(key)
+            if isinstance(val, str):
+                file_paths.append(val)
+
+        # 工具名称也暗示了操作的文件类型
+        tool_file_hints = {
+            "read_file": ["file_path"],
+            "write_file": ["file_path"],
+            "edit_file": ["file_path"],
+            "search_repository": ["pattern"],
+            "list_files": ["path"],
+            "read_repository_file": ["path"],
+            "search_repository_file": ["pattern"],
+        }
+        for param_name in tool_file_hints.get(name, []):
+            if param_name not in payload:
+                continue
+            val = payload[param_name]
+            if isinstance(val, str):
+                file_paths.append(val)
+
+        return file_paths

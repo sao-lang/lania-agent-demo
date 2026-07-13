@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.harness.components.policy_checks import PolicyEvaluator
 from app.harness.components.policy_profiles import PolicyProfile, PolicyProfileResolver, PolicyProfileStore
 from app.harness.models import PolicyDecision
+from app.models.admin import AgentDefinition
 from app.models.artifact import ReportArtifactContent, ReviewResult
 from app.models.task import TaskPlan, TaskRequest
 from app.services.sqlite_store import SQLiteStateStore
@@ -90,6 +91,52 @@ class PolicyEngine:
 
         profile = self.resolve_profile(request)
         return self.policy_evaluator.check_tool(request, tool_name, payload, profile)
+
+    # ── Agent 级工具白名单 ──────────────────────────
+
+    def check_agent_tool(
+        self,
+        tool_name: str,
+        agent: AgentDefinition | None = None,
+        allowed_tools: list[str] | None = None,
+    ) -> PolicyDecision:
+        """校验工具是否在 Agent 白名单内。
+
+        Args:
+            tool_name: 工具名称。
+            agent: Agent 定义（含 allowed_tools）。
+            allowed_tools: 直接传入的白名单（优先）。
+
+        Returns:
+            PolicyDecision: allowed=True 表示允许。
+        """
+        tool_list = allowed_tools
+        if tool_list is None and agent is not None:
+            tool_list = agent.allowed_tools
+
+        # None = 未设置限制
+        if tool_list is None:
+            return PolicyDecision(
+                allowed=True,
+                stage="agent_tool_check",
+                policy_name="agent_allowed_tools",
+                reason="No tool restrictions",
+            )
+
+        if tool_name not in tool_list:
+            return PolicyDecision(
+                allowed=False,
+                stage="agent_tool_check",
+                policy_name="agent_allowed_tools",
+                reason=f"Agent 不允许使用工具 '{tool_name}'",
+                details={"allowed_tools": tool_list},
+            )
+        return PolicyDecision(
+            allowed=True,
+            stage="agent_tool_check",
+            policy_name="agent_allowed_tools",
+            reason="Tool is in allowed_tools list",
+        )
 
     def check_artifact(
         self,

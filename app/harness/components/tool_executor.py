@@ -225,6 +225,8 @@ class ToolExecutor:
             tool_call_id=tool_call_id,
             run_budget=self.run_budget_getter(workflow_state),
             model_router=self.dependencies.model_router,
+            # ── 文件级指令（由 ExecutionHarness 在阶段 2 注入到 workflow_state） ──
+            file_instructions=workflow_state.get("_file_instructions"),
         )
 
     def ensure_circuit_closed(self, name: str) -> None:

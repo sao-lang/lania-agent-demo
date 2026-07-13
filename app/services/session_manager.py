@@ -166,6 +166,12 @@ class SessionManager:
         session.mode = mode
         await self.save(session)
 
+    async def set_agent_name(self, session_id: str, agent_name: str | None) -> None:
+        """切换会话使用的 Agent 名称。"""
+        session = await self.get_or_create(session_id)
+        session.agent_name = agent_name
+        await self.save(session)
+
     async def _persist(self, session: Session) -> None:
         """内部持久化：写入 SQLite。"""
         if self._persistence:

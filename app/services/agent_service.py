@@ -1,7 +1,11 @@
 """Agent 对话服务模块。
 
 核心编排服务：接收用户输入 → 按 mode 决定流程 → 匹配 Capability → 执行。
-是 Mode + Capability 模型的核心实现。
+
+Token 节省策略：
+- 扩展清单：只给大模型一份名字+描述的菜单（~50 tokens/扩展）
+- 按需加载：大模型调用 load_extension / load_rule 工具获取完整内容
+- Prompt 由系统处理，不在清单中
 """
 
 from __future__ import annotations
@@ -23,10 +27,13 @@ from app.models.agent import (
     IntentMatch,
     Plan,
 )
+from app.services.agent_def_manager import AgentDefManager
+from app.services.extension_catalog import ExtensionCatalog
 from app.services.intent_matcher import IntentMatcher
 from app.services.mcp_manager import McpManager
 from app.services.plan_executor import PlanExecutor
 from app.services.plan_generator import PlanGenerator
+from app.services.skill_manager import SkillManager
 from app.services.session_manager import SessionManager, Message
 
 
@@ -54,6 +61,10 @@ class AgentService:
         tool_registry: Any | None = None,
         repository: Any | None = None,
         database: Any | None = None,
+        skill_manager: SkillManager | None = None,
+        agent_def_manager: AgentDefManager | None = None,
+        catalog: ExtensionCatalog | None = None,
+        customization_engine: Any | None = None,
     ) -> None:
         self._registry = registry
         self._intent_matcher = intent_matcher
@@ -67,6 +78,14 @@ class AgentService:
         self._tool_registry = tool_registry
         self._repository = repository
         self._database = database
+        self._skill_manager = skill_manager
+        self._agent_def_manager = agent_def_manager
+        self._customization_engine = customization_engine
+        self._catalog = catalog or ExtensionCatalog(
+            skill_manager=skill_manager,
+            agent_def_manager=agent_def_manager,
+            mcp_manager=mcp_manager,
+        )
 
         # 注册 Capability 提供者
         self._registry.register_provider(ChatCapability(llm=llm))
@@ -103,6 +122,29 @@ class AgentService:
         session = await self._session_manager.get_or_create(request.session_id)
         if request.mode:
             session.mode = request.mode
+
+        # 1a. 解析 Agent 身份（请求级 > 会话级 > 默认）
+        agent_name = request.agent_name or request.agent_id
+        if agent_name is None and session.agent_name:
+            agent_name = session.agent_name
+
+        # 写入会话（持久化 Agent 选择）
+        if agent_name and agent_name != session.agent_name:
+            await self._session_manager.set_agent_name(session.id, agent_name)
+
+        # 1.5 构建系统提示词（扩展清单，轻量 ~50 tokens/扩展）
+        system_prompt, allowed_tools = await self._build_system_prompt(
+            agent_name=agent_name,
+        )
+        if system_prompt:
+            session.context["system_prompt"] = system_prompt
+        if allowed_tools is not None:
+            session.context["allowed_tools"] = allowed_tools
+        yield AgentEvent(type="system_prompt", data={
+            "length": len(system_prompt),
+            "agent_name": agent_name,
+            "allowed_tools": allowed_tools or [],
+        })
 
         # 2. 处理 MCP 配置
         if request.mcp_config:
@@ -188,6 +230,50 @@ class AgentService:
             mode=request.mode,
         )
 
+    # ── 扩展清单 + 系统提示词 ──────────────────
+
+    async def _build_system_prompt(
+        self,
+        agent_name: str | None = None,
+    ) -> tuple[str, list[str] | None]:
+        """构建系统提示词：Agent 指令 + 扩展清单 + 工具白名单。
+
+        优先使用 CustomizationEngine 统一构建，
+        回退到原有的 AgentDefManager + ExtensionCatalog 逻辑。
+
+        Returns:
+            (system_prompt, allowed_tools) 元组。
+        """
+        # 使用 CustomizationEngine（如果可用）
+        if self._customization_engine:
+            sc = await self._customization_engine.build_session_context(
+                agent_name=agent_name,
+            )
+            parts: list[str] = []
+            if sc.system_prompt:
+                parts.append(sc.system_prompt)
+            if sc.extension_catalog:
+                parts.append(sc.extension_catalog)
+            return "\n\n".join(parts) if parts else "", sc.allowed_tools
+
+        # 回退到旧逻辑
+        parts: list[str] = []
+        agent = None
+        if self._agent_def_manager:
+            if agent_name:
+                agent = await self._agent_def_manager.get_by_name(agent_name)
+            if agent is None:
+                agent = await self._agent_def_manager.get_default()
+        if agent and agent.instructions:
+            parts.append(agent.instructions)
+
+        skill_names = agent.skills if agent else None
+        catalog = await self._catalog.build_catalog(skill_names)
+        if catalog:
+            parts.append(catalog)
+
+        return "\n\n".join(parts) if parts else "", agent.allowed_tools if agent else None
+
     # ── 模式处理 ──────────────────────────────
 
     async def _handle_chat_mode(
@@ -204,6 +290,7 @@ class AgentService:
             "tool_registry": self._tool_registry,
             "repository": self._repository,
             "database": self._database,
+            "allowed_tools": session.context.get("allowed_tools"),
         }
         async for event in self._route_to_capability(
             message, capability, context,

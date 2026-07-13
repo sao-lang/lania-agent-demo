@@ -497,6 +497,56 @@ class SQLiteStateStore:
                 )
                 '''
             )
+            # ── 管理面资源表 ──────────────────────
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS skills (
+                    skill_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS skill_rules (
+                    rule_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS agent_defs (
+                    agent_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS prompts (
+                    prompt_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS mcp_servers (
+                    mcp_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                )
+                '''
+            )
+            # ── 系统提示词持久化缓存 ──────────────
+            connection.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS prompt_cache (
+                    cache_key TEXT PRIMARY KEY,   -- agent_id:skills_hash
+                    payload TEXT NOT NULL         -- {system_prompt, agent_id, skills_hash, version, updated_at}
+                )
+                '''
+            )
 
     def _connect(self) -> sqlite3.Connection:
         """创建新的 SQLite 连接。"""
@@ -633,3 +683,107 @@ class SQLiteStateStore:
                 return datetime.fromisoformat(value['__datetime__'])
             return {key: self._restore(item) for key, item in value.items()}
         return value
+
+    # ── Skills ─────────────────────────────────────────────────────────────────
+
+    def upsert_skill(self, record: Mapping[str, Any]) -> None:
+        """写入或更新单条 Skill 记录。"""
+        self._upsert('skills', 'skill_id', record['id'], record)
+
+    def delete_skill(self, skill_id: str) -> None:
+        """删除单条 Skill 记录。"""
+        self._delete('skills', 'skill_id', skill_id)
+
+    def get_skill(self, skill_id: str) -> dict[str, Any] | None:
+        """读取单条 Skill 记录。"""
+        return self._load_single('skills', 'skill_id', skill_id)
+
+    def list_skills(self) -> list[dict[str, Any]]:
+        """读取全部 Skill 记录。"""
+        return self._load_table('skills')
+
+    # ── Skill Rules ────────────────────────────────────────────────────────────
+
+    def upsert_skill_rule(self, record: Mapping[str, Any]) -> None:
+        """写入或更新单条 Skill Rule 记录。"""
+        self._upsert('skill_rules', 'rule_id', record['id'], record)
+
+    def delete_skill_rule(self, rule_id: str) -> None:
+        """删除单条 Skill Rule 记录。"""
+        self._delete('skill_rules', 'rule_id', rule_id)
+
+    def get_skill_rule(self, rule_id: str) -> dict[str, Any] | None:
+        """读取单条 Skill Rule 记录。"""
+        return self._load_single('skill_rules', 'rule_id', rule_id)
+
+    def list_skill_rules(self) -> list[dict[str, Any]]:
+        """读取全部 Skill Rule 记录。"""
+        return self._load_table('skill_rules')
+
+    # ── Agent Definitions ──────────────────────────────────────────────────────
+
+    def upsert_agent_def(self, record: Mapping[str, Any]) -> None:
+        """写入或更新单条 Agent 定义记录。"""
+        self._upsert('agent_defs', 'agent_id', record['id'], record)
+
+    def delete_agent_def(self, agent_id: str) -> None:
+        """删除单条 Agent 定义记录。"""
+        self._delete('agent_defs', 'agent_id', agent_id)
+
+    def get_agent_def(self, agent_id: str) -> dict[str, Any] | None:
+        """读取单条 Agent 定义记录。"""
+        return self._load_single('agent_defs', 'agent_id', agent_id)
+
+    def list_agent_defs(self) -> list[dict[str, Any]]:
+        """读取全部 Agent 定义记录。"""
+        return self._load_table('agent_defs')
+
+    # ── Prompts ────────────────────────────────────────────────────────────────
+
+    def upsert_prompt(self, record: Mapping[str, Any]) -> None:
+        """写入或更新单条 Prompt 记录。"""
+        self._upsert('prompts', 'prompt_id', record['id'], record)
+
+    def delete_prompt(self, prompt_id: str) -> None:
+        """删除单条 Prompt 记录。"""
+        self._delete('prompts', 'prompt_id', prompt_id)
+
+    def get_prompt(self, prompt_id: str) -> dict[str, Any] | None:
+        """读取单条 Prompt 记录。"""
+        return self._load_single('prompts', 'prompt_id', prompt_id)
+
+    def list_prompts(self) -> list[dict[str, Any]]:
+        """读取全部 Prompt 记录。"""
+        return self._load_table('prompts')
+
+    # ── MCP Servers ────────────────────────────────────────────────────────────
+
+    def upsert_mcp_server(self, record: Mapping[str, Any]) -> None:
+        """写入或更新单条 MCP Server 记录。"""
+        self._upsert('mcp_servers', 'mcp_id', record['id'], record)
+
+    def delete_mcp_server(self, mcp_id: str) -> None:
+        """删除单条 MCP Server 记录。"""
+        self._delete('mcp_servers', 'mcp_id', mcp_id)
+
+    def get_mcp_server(self, mcp_id: str) -> dict[str, Any] | None:
+        """读取单条 MCP Server 记录。"""
+        return self._load_single('mcp_servers', 'mcp_id', mcp_id)
+
+    def list_mcp_servers(self) -> list[dict[str, Any]]:
+        """读取全部 MCP Server 记录。"""
+        return self._load_table('mcp_servers')
+
+    # ── 系统提示词持久化缓存 ──────────────────
+
+    def upsert_prompt_cache(self, cache_key: str, payload: dict[str, Any]) -> None:
+        """写入或更新系统提示词缓存。"""
+        self._upsert('prompt_cache', 'cache_key', cache_key, payload)
+
+    def get_prompt_cache(self, cache_key: str) -> dict[str, Any] | None:
+        """读取系统提示词缓存。"""
+        return self._load_single('prompt_cache', 'cache_key', cache_key)
+
+    def delete_prompt_cache(self, cache_key: str) -> None:
+        """删除单条系统提示词缓存。"""
+        self._delete('prompt_cache', 'cache_key', cache_key)

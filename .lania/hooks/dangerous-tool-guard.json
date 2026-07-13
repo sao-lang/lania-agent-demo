@@ -1,0 +1,24 @@
+{
+  "name": "dangerous-tool-guard",
+  "description": "拦截危险命令执行",
+  "events": ["before_tool"],
+  "conditions": {
+    "tool_names": ["shell_command", "command"]
+  },
+  "actions": [
+    {
+      "type": "log",
+      "params": {
+        "level": "warn",
+        "message": "检测到危险工具调用: ${tool_name}"
+      }
+    },
+    {
+      "type": "block",
+      "params": {
+        "reason": "禁止在生产环境执行 shell 命令",
+        "error_code": "hook_blocked_dangerous_tool"
+      }
+    }
+  ]
+}
