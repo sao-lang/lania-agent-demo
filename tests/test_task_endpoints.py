@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.models.artifact import Artifact, ReportArtifactContent
-from app.models.policy import PolicyProfileItem, PolicyProfileListResponse
-from app.models.task import TaskDetail, TaskListResponse, TaskMetrics, TaskRequest, TaskRunDetail, TaskRunSummary, TaskSummaryItem
-from app.agents.subagents import SubAgentSchema
-from app.agents.tools.base import ToolSchema
-from app.core.errors import not_found_error
+from app.agent_platform.models.artifact import Artifact, ReportArtifactContent
+from app.agent_platform.models.policy import PolicyProfileItem, PolicyProfileListResponse
+from app.agent_platform.models.task import TaskDetail, TaskListResponse, TaskMetrics, TaskRequest, TaskRunDetail, TaskRunSummary, TaskSummaryItem
+from app.agent_platform.agents.subagents import SubAgentSchema
+from app.agent_platform.agents.tools.base import ToolSchema
+from app.agent_platform.core.errors import not_found_error
 
 
 class FakeTaskService:
@@ -36,7 +36,7 @@ class FakeTaskService:
         self.task = TaskDetail(
             task_id='task-1',
             status='completed',
-            request=TaskRequest(collection_name='demo', doc_ids=['doc-1'], instructions='总结风险点'),
+            request=TaskRequest(collection_name='demo', doc_ids=['doc-1'], instructions='总结风险�?),
             final_artifact_id='artifact-1',
             metrics=TaskMetrics(step_count=6, tool_calls=7, latency_ms=12),
             created_at=now,
@@ -51,7 +51,7 @@ class FakeTaskService:
             status='completed',
             task_type='document_analysis',
             collection_name='demo',
-            instructions='总结风险点',
+            instructions='总结风险�?,
             created_at=now,
             completed_at=now,
             checkpoint_count=0,
@@ -199,7 +199,7 @@ class TaskEndpointTests(unittest.TestCase):
         with patch('app.core.config.get_settings') as mock_get_settings, patch(
             'app.container.build_container', return_value=FakeContainer()
         ):
-            from app.core.config import Settings
+            from app.agent_platform.core.config import Settings
 
             mock_get_settings.return_value = Settings(DATA_DIR=settings_path)
             sys.modules.pop('app.main', None)
@@ -215,7 +215,7 @@ class TaskEndpointTests(unittest.TestCase):
             json={
                 'collection_name': 'demo',
                 'doc_ids': ['doc-1'],
-                'instructions': '总结风险点',
+                'instructions': '总结风险�?,
             },
         )
 
@@ -231,7 +231,7 @@ class TaskEndpointTests(unittest.TestCase):
                 'task_type': 'document_summary',
                 'collection_name': 'demo',
                 'doc_ids': ['doc-1'],
-                'instructions': '输出摘要和风险要点',
+                'instructions': '输出摘要和风险要�?,
             },
         )
 

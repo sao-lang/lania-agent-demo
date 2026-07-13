@@ -1,0 +1,4 @@
+"""数据分析 Capability 包�?""
+from app.agent_platform.capabilities.data_analysis.service import DataAnalysisCapability
+
+__all__ = ["DataAnalysisCapability"]

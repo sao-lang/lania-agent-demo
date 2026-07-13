@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.core.config import Settings
+from app.agent_platform.core.config import Settings
 from app.models.query import CitationItem, QueryRequest
-from app.rag.observability import TraceRecorder
-from app.rag.query_engine import RagQueryEngine
+from app.agent_platform.observability.trace_recorder import TraceRecorder
+from app.rag_system.query.engine import RagQueryEngine
 from app.services.sqlite_store import SQLiteStateStore
 from app.services.state import InMemoryState
 from app.workflows.query_nodes import QueryWorkflowNodes
@@ -39,7 +39,7 @@ class FakeCorrectiveRetrievalService:
             CitationItem(
                 chunk_id='c1',
                 source='demo.md',
-                text='session summary 接口用于压缩历史消息，并生成会话摘要。',
+                text='session summary 接口用于压缩历史消息，并生成会话摘要�?,
                 score=0.93,
             )
         ]
@@ -50,7 +50,7 @@ class FakeCorrectiveLLM:
         self.answer_call_count = 0
 
     def complete(self, prompt: str) -> str:
-        if '你是 RAG 结果校验器' in prompt:
+        if '你是 RAG 结果校验�? in prompt:
             if '自动同步外部 CRM 数据' in prompt:
                 return json.dumps(
                     {
@@ -73,11 +73,11 @@ class FakeCorrectiveLLM:
                 ensure_ascii=False,
             )
         if '你是一个严格保守的 RAG 助手' in prompt:
-            return 'session summary 接口用于压缩历史消息，并生成会话摘要。'
+            return 'session summary 接口用于压缩历史消息，并生成会话摘要�?
         self.answer_call_count += 1
         if self.answer_call_count == 1:
-            return 'session summary 接口还会自动同步外部 CRM 数据。'
-        return 'session summary 接口用于压缩历史消息，并生成会话摘要。'
+            return 'session summary 接口还会自动同步外部 CRM 数据�?
+        return 'session summary 接口用于压缩历史消息，并生成会话摘要�?
 
 
 class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
@@ -99,14 +99,14 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         response = orchestrator.query(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
             )
         )
 
-        self.assertEqual(response.answer, 'session summary 接口用于压缩历史消息，并生成会话摘要。')
+        self.assertEqual(response.answer, 'session summary 接口用于压缩历史消息，并生成会话摘要�?)
         workflow_events = [event for event in self.trace.events if event.name == 'workflow_node_completed']
         self.assertTrue(any(event.payload.get('node') == 'self_reflect' for event in workflow_events))
         self.assertFalse(any(event.payload.get('node') == 'load_request' for event in workflow_events))
@@ -117,7 +117,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         state = orchestrator._invoke_workflow(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
@@ -146,7 +146,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         state = orchestrator._invoke_workflow(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
@@ -166,7 +166,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         state = orchestrator._invoke_workflow(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
@@ -194,7 +194,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         state = orchestrator._invoke_workflow(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
@@ -213,7 +213,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         state = orchestrator._invoke_workflow(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
@@ -260,7 +260,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
         events = list(
             orchestrator.stream_query(
                 QueryRequest(
-                    question='session summary 接口是什么',
+                    question='session summary 接口是什�?,
                     collection_name='demo',
                     use_corrective_rag=True,
                     use_query_rewrite=False,
@@ -279,21 +279,21 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
         self.assertIn('corrective_check', names)
         self.assertEqual(names[-2], 'answer_completed')
         self.assertEqual(names[-1], 'done')
-        self.assertEqual(events[-1]['data']['response']['answer'], 'session summary 接口用于压缩历史消息，并生成会话摘要。')
+        self.assertEqual(events[-1]['data']['response']['answer'], 'session summary 接口用于压缩历史消息，并生成会话摘要�?)
 
     def test_query_without_corrective_rag_still_runs_on_graph(self) -> None:
         orchestrator = self._build_orchestrator()
 
         response = orchestrator.query(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=False,
                 use_query_rewrite=False,
             )
         )
 
-        self.assertIn('session summary 接口还会自动同步外部 CRM 数据。', response.answer)
+        self.assertIn('session summary 接口还会自动同步外部 CRM 数据�?, response.answer)
         workflow_nodes = [event.payload.get('node') for event in self.trace.events if event.name == 'workflow_node_completed']
         self.assertIn('retrieve_evidence', workflow_nodes)
         self.assertNotIn('execute_classic', workflow_nodes)
@@ -305,7 +305,7 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
         events = list(
             orchestrator.stream_query(
                 QueryRequest(
-                    question='session summary 接口是什么',
+                    question='session summary 接口是什�?,
                     collection_name='demo',
                     use_corrective_rag=False,
                     use_query_rewrite=False,
@@ -338,16 +338,16 @@ class QueryWorkflowCorrectiveRagTests(unittest.TestCase):
 
         response = orchestrator.query(
             QueryRequest(
-                question='session summary 接口是什么',
+                question='session summary 接口是什�?,
                 collection_name='demo',
                 use_corrective_rag=True,
                 use_query_rewrite=False,
             )
         )
 
-        self.assertEqual(response.answer, 'session summary 接口用于压缩历史消息，并生成会话摘要。')
+        self.assertEqual(response.answer, 'session summary 接口用于压缩历史消息，并生成会话摘要�?)
         self.assertEqual(len(self.retrieval.calls), 2)
-        self.assertTrue(any('请优先返回能直接支撑答案的事实' in item for item in self.retrieval.calls))
+        self.assertTrue(any('请优先返回能直接支撑答案的事�? in item for item in self.retrieval.calls))
         decisions = [event.payload for event in self.trace.events if event.name == 'self_rag_decision']
         self.assertTrue(any(item.get('decision') == 'retry_retrieve' for item in decisions))
         workflow_nodes = [event.payload.get('node') for event in self.trace.events if event.name == 'workflow_node_completed']

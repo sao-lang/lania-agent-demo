@@ -1,9 +1,9 @@
-"""测试 ModeRouter 和确认矩阵。"""
+"""测试 ModeRouter 和确认矩阵�?""
 
 import unittest
 
-from app.harness.brain.mode_router import ModeRouter
-from app.harness.brain.models import (
+from app.agent_platform.agents.brain.mode_router import ModeRouter
+from app.agent_platform.agents.brain.models import (
     Complexity,
     IntentDecision,
     KnowledgeSource,
@@ -14,7 +14,7 @@ from app.harness.brain.models import (
 
 
 class TestModeRouter(unittest.TestCase):
-    """测试模式路由。"""
+    """测试模式路由�?""
 
     def setUp(self):
         self.router = ModeRouter()
@@ -106,7 +106,7 @@ class TestModeRouter(unittest.TestCase):
         async def run():
             result = await self._route(decision)
             self.assertEqual(result.mode, SuggestedMode.PLAN)
-            self.assertIn("3 个知识来源", result.upgrade_reason)
+            self.assertIn("3 个知识来�?, result.upgrade_reason)
 
         import asyncio
         asyncio.run(run())
@@ -161,12 +161,12 @@ class TestModeRouter(unittest.TestCase):
         async def run():
             result = await self._route(decision)
             self.assertEqual(result.mode, SuggestedMode.PLAN)
-            self.assertIn("需要规划", result.upgrade_reason)
+            self.assertIn("需要规�?, result.upgrade_reason)
 
         import asyncio
         asyncio.run(run())
 
-    # ── critical 优先级最高 ──
+    # ── critical 优先级最�?──
 
     def test_critical_overrides_needs_planning(self):
         decision = IntentDecision(
@@ -190,7 +190,7 @@ class TestModeRouter(unittest.TestCase):
 
 
 class TestConsentMatrix(unittest.TestCase):
-    """测试确认矩阵。"""
+    """测试确认矩阵�?""
 
     def setUp(self):
         self.router = ModeRouter()
@@ -227,7 +227,7 @@ class TestConsentMatrix(unittest.TestCase):
 
 
 class TestDisclosureMatrix(unittest.TestCase):
-    """测试披露矩阵。"""
+    """测试披露矩阵�?""
 
     def setUp(self):
         self.router = ModeRouter()

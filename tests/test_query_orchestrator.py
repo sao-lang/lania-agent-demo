@@ -4,10 +4,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.capabilities.knowledge import GroundedAnswerResult
-from app.core.config import Settings
-from app.models.artifact import EvidenceItem, EvidencePack
+from app.agent_platform.core.config import Settings
+from app.agent_platform.models.artifact import EvidenceItem, EvidencePack
 from app.models.query import ChatRequest, QueryRequest, QueryResponse
-from app.rag.observability import TraceRecorder
+from app.agent_platform.observability.trace_recorder import TraceRecorder
 from app.workflows.query_task_adapter import build_query_task_spec
 from app.workflows.query_orchestrator import QueryWorkflowOrchestrator
 
@@ -100,7 +100,7 @@ class FakeKnowledgeCapability:
     def grounded_answer(self, request, *, trace_context=None):
         self.calls.append(request.retrieval_query or request.question)
         return GroundedAnswerResult(
-            answer='依据证据的回答',
+            answer='依据证据的回�?,
             evidence_pack=EvidencePack(
                 task_id='',
                 evidence_items=[
@@ -108,7 +108,7 @@ class FakeKnowledgeCapability:
                         citation_id='c1',
                         source='demo.md',
                         chunk_id='chunk-1',
-                        text='文档说明该接口用于压缩历史消息。',
+                        text='文档说明该接口用于压缩历史消息�?,
                         support_score=0.91,
                     )
                 ],

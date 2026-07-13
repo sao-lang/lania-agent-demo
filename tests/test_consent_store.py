@@ -1,13 +1,13 @@
-"""测试 ConsentStore。"""
+"""测试 ConsentStore�?""
 
 import unittest
 
-from app.harness.brain.models import ConsentRecord, ConsentScope
-from app.services.consent_store import ConsentStore
+from app.agent_platform.agents.brain.models import ConsentRecord, ConsentScope
+from app.agent_platform.agents.brain.consent_store import ConsentStore
 
 
 class TestConsentStore(unittest.TestCase):
-    """测试确认记录存储。"""
+    """测试确认记录存储�?""
 
     def setUp(self):
         self.store = ConsentStore()
@@ -68,7 +68,7 @@ class TestConsentStore(unittest.TestCase):
         # 验证未清除前可以获取
         self.assertIsNotNone(self.store.get("user_1", "shell_command"))
 
-        # 清 session
+        # �?session
         self.store.clear_session("session_1")
 
         # session 级记录被清除
@@ -89,7 +89,7 @@ class TestConsentStore(unittest.TestCase):
 
         # session 级被清除
         self.assertIsNone(self.store.get("user_1", "tool_a"))
-        # persistent 级保留
+        # persistent 级保�?
         self.assertIsNotNone(self.store.get("user_1", "tool_b"))
 
     def test_clear_user_removes_all(self):
@@ -137,7 +137,7 @@ class TestConsentStore(unittest.TestCase):
         self.assertIsNone(self.store.get("user_1", "shell_command"))
 
     def test_clear_session_unbound_session(self):
-        # 未 bind 的 session 不报错
+        # �?bind �?session 不报�?
         self.store.clear_session("unknown_session")  # should not raise
         self.assertTrue(True)
 

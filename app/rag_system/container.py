@@ -126,6 +126,13 @@ class RagContainer:
         router.include_router(query_router, tags=['rag-query'])
         router.include_router(documents_router, prefix='/documents', tags=['rag-documents'])
         router.include_router(collections_router, prefix='/collections', tags=['rag-collections'])
+        # 知识搜索、评测、反馈
+        from app.rag_system.api.knowledge import router as knowledge_router
+        from app.rag_system.api.eval import router as eval_router
+        from app.rag_system.api.feedback import router as feedback_router
+        router.include_router(knowledge_router, prefix='/knowledge', tags=['rag-knowledge'])
+        router.include_router(eval_router, prefix='/eval', tags=['rag-eval'])
+        router.include_router(feedback_router, prefix='/feedback', tags=['rag-feedback'])
         return router
 
     # ── LangGraph 图编排 ─────────────────────────────────────

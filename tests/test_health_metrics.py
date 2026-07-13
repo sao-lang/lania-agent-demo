@@ -1,4 +1,4 @@
-"""健康与指标端点测试，覆盖上下文压缩、缓存、检索增强以及追踪摘要暴露。"""
+"""健康与指标端点测试，覆盖上下文压缩、缓存、检索增强以及追踪摘要暴露�?""
 
 import tempfile
 import unittest
@@ -10,14 +10,14 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
+from app.agent_platform.core.config import Settings
 from app.main import create_app
 
 
 class HealthMetricsTests(unittest.TestCase):
-    """健康与指标测试集合，关注运行时状态、缓存统计与追踪指标的暴露。"""
+    """健康与指标测试集合，关注运行时状态、缓存统计与追踪指标的暴露�?""
     def setUp(self) -> None:
-        """初始化当前测试所需的隔离环境、依赖桩和样例数据，避免不同用例之间互相污染。"""
+        """初始化当前测试所需的隔离环境、依赖桩和样例数据，避免不同用例之间互相污染�?""
         self.app = create_app()
         self.client = TestClient(self.app)
         self.container = self.app.state.container
@@ -83,14 +83,14 @@ class HealthMetricsTests(unittest.TestCase):
             'cache_id': 'sc-1',
             'collection_name': 'demo',
             'mode': 'query',
-            'question': '会话摘要是什么',
-            'normalized_question': '会话摘要是什么',
+            'question': '会话摘要是什�?,
+            'normalized_question': '会话摘要是什�?,
             'question_embedding': [1.0, 0.0],
             'context_signature': None,
             'filters': None,
             'filters_signature': 'filters',
             'strategy_signature': 'strategy',
-            'answer': '会话摘要用于压缩历史消息。',
+            'answer': '会话摘要用于压缩历史消息�?,
             'answer_mode': 'local_fallback',
             'citations': [],
             'source_doc_ids': ['doc-1'],
@@ -160,7 +160,7 @@ class HealthMetricsTests(unittest.TestCase):
                 'hits': 2,
                 'filters': {},
                 'effective_filters': {'index_kind': ['content', 'query_hint', 'title_summary']},
-                'query': 'session summary 怎么看',
+                'query': 'session summary 怎么�?,
                 'use_hybrid_retrieval': True,
                 'retrieval_mode': 'hybrid',
                 'dense_candidates': 3,
@@ -223,7 +223,7 @@ class HealthMetricsTests(unittest.TestCase):
             'relation': 'related_to',
             'normalized_relation': 'related_to',
             'evidence_chunk_id': 'c1',
-            'evidence_text': 'session summary 与 chat session 相关。',
+            'evidence_text': 'session summary �?chat session 相关�?,
             'weight': 0.2,
             'metadata': {},
             'created_at': now,
@@ -354,9 +354,9 @@ class HealthMetricsTests(unittest.TestCase):
         )
 
     def test_health_exposes_context_compression_runtime_summary(self) -> None:
-        """覆盖 `health_exposes_context_compression_runtime_summary` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期。"""
+        """覆盖 `health_exposes_context_compression_runtime_summary` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期�?""
         with patch(
-            'app.api.v1.endpoints.health._probe_remote_worker_sync',
+            'app.agent_platform.api.v1.endpoints.health._probe_remote_worker_sync',
             side_effect=[
                 {
                     'probe_enabled': True,
@@ -499,9 +499,9 @@ class HealthMetricsTests(unittest.TestCase):
         self.assertTrue(capabilities['database']['ready'])
 
     def test_metrics_exposes_flattened_context_compression_indicators(self) -> None:
-        """覆盖 `metrics_exposes_flattened_context_compression_indicators` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期。"""
+        """覆盖 `metrics_exposes_flattened_context_compression_indicators` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期�?""
         with patch(
-            'app.api.v1.endpoints.health._probe_remote_worker_sync',
+            'app.agent_platform.api.v1.endpoints.health._probe_remote_worker_sync',
             side_effect=[
                 {
                     'probe_enabled': True,
@@ -620,7 +620,7 @@ class HealthMetricsTests(unittest.TestCase):
         self.assertIsNotNone(payload['office_conversion_cache_last_pruned_at'])
 
     def test_trace_summary_recent_window_uses_last_n_events(self) -> None:
-        """覆盖 `trace_summary_recent_window_uses_last_n_events` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期。"""
+        """覆盖 `trace_summary_recent_window_uses_last_n_events` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期�?""
         trace = self.container.trace.__class__()
         for index in range(25):
             trace.record(
@@ -644,7 +644,7 @@ class HealthMetricsTests(unittest.TestCase):
         self.assertEqual(recent['strategy_breakdown']['disabled'], 10)
 
     def test_trace_summary_exposes_semantic_chunking_and_retrieval_enhancements(self) -> None:
-        """覆盖 `trace_summary_exposes_semantic_chunking_and_retrieval_enhancements` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期。"""
+        """覆盖 `trace_summary_exposes_semantic_chunking_and_retrieval_enhancements` 场景，确认目标流程在当前输入、配置与依赖布置下保持稳定，并且关键输出、状态码、字段或观测结果符合预期�?""
         semantic_chunking = self.container.trace.summarize_semantic_chunking()
         retrieval_enhancements = self.container.trace.summarize_retrieval_enhancements()
         task_workflows = self.container.trace.summarize_task_workflows()

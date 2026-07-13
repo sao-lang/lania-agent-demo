@@ -17,6 +17,11 @@ def get_rag_container(request: Request) -> RagContainer:
     return container
 
 
+def get_main_container(request: Request) -> Any:
+    """从请求上下文中获取主应用容器（用于 eval/feedback 等共享服务）。"""
+    return getattr(request.app.state, 'container', None)
+
+
 def get_rag_facade(request: Request) -> Any:
     """从请求上下文中获取 RAG 门面。"""
     return get_rag_container(request).facade

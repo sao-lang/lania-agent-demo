@@ -4,8 +4,8 @@ from pathlib import Path
 
 import httpx
 
-from app.agents.memory import TaskMemory
-from app.agents.subagents import (
+from app.agent_platform.agents.memory import TaskMemory
+from app.agent_platform.agents.subagents import (
     ContractAgent,
     ContractDiscoverInput,
     EvidenceAgent,
@@ -21,13 +21,13 @@ from app.capabilities.knowledge import DefaultKnowledgeCapability, build_knowled
 from app.capabilities.knowledge.base import DocumentContextRequest, GroundedAnswerRequest, KnowledgeSearchRequest
 from app.capabilities.knowledge.remote import RemoteKnowledgeCapability, RemoteKnowledgeProviderError
 from app.capabilities.knowledge.contracts import GroundedAnswerStrategy
-from app.core.config import Settings
-from app.harness.sandbox import ToolSandbox, build_default_sandbox_worker_registry
-from app.harness.model_router import ModelRouter
-from app.models.artifact import EvidenceItem, EvidencePack, ReportArtifactContent
-from app.agents.tools.base import ToolExecutionError
-from app.models.task import RunBudget, TaskRequest
-from app.rag.observability import TraceRecorder
+from app.agent_platform.core.config import Settings
+from app.agent_platform.harness.sandbox import ToolSandbox, build_default_sandbox_worker_registry
+from app.agent_platform.harness.model_router import ModelRouter
+from app.agent_platform.models.artifact import EvidenceItem, EvidencePack, ReportArtifactContent
+from app.agent_platform.agents.tools.base import ToolExecutionError
+from app.agent_platform.models.task import RunBudget, TaskRequest
+from app.agent_platform.observability.trace_recorder import TraceRecorder
 from app.services.state import InMemoryState
 from app.workflows.tasks.skill import build_default_task_skill_registry
 
@@ -184,7 +184,7 @@ class P2RuntimeExtensionsTests(unittest.TestCase):
                         citation_id='c1',
                         source='design.md',
                         chunk_id='chunk-1',
-                        text='系统存在异常处理缺失风险。',
+                        text='系统存在异常处理缺失风险�?,
                         support_score=0.9,
                     )
                 ],

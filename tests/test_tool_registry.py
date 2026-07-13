@@ -4,25 +4,25 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.agents.memory import TaskMemory
-from app.agents.tools.api_contract_tools import ListApiContractsTool, ReadApiContractTool, SearchApiContractOperationsTool
-from app.agents.tools.artifact_capability_tools import ListArtifactsTool, ReadArtifactTool
-from app.agents.tools.database_tools import DescribeDatabaseTableTool, ListDatabaseTablesTool, QueryDatabaseTool
-from app.agents.tools.rag_tools import RagGroundedAnswerTool, RagGroundedQueryTool, RagLoadDocumentContextTool, RagRetrieveEvidenceTool
-from app.agents.tools.repository_tools import ReadRepositoryFileTool, SearchRepositoryTool
-from app.agents.tools.base import ToolContext, ToolExecutionError
-from app.agents.tools.registry import ToolRegistry
+from app.agent_platform.agents.memory import TaskMemory
+from app.agent_platform.agents.tools.api_contract_tools import ListApiContractsTool, ReadApiContractTool, SearchApiContractOperationsTool
+from app.agent_platform.agents.tools.artifact_capability_tools import ListArtifactsTool, ReadArtifactTool
+from app.agent_platform.agents.tools.database_tools import DescribeDatabaseTableTool, ListDatabaseTablesTool, QueryDatabaseTool
+from app.agent_platform.agents.tools.rag_tools import RagGroundedAnswerTool, RagGroundedQueryTool, RagLoadDocumentContextTool, RagRetrieveEvidenceTool
+from app.agent_platform.agents.tools.repository_tools import ReadRepositoryFileTool, SearchRepositoryTool
+from app.agent_platform.agents.tools.base import ToolContext, ToolExecutionError
+from app.agent_platform.agents.tools.registry import ToolRegistry
 from app.capabilities.api_contract import build_api_contract_capability
 from app.capabilities.artifact import build_artifact_capability_from_provider
 from app.capabilities.database import build_database_capability
 from app.capabilities.knowledge import DocumentContextItem, DocumentContextResult, GroundedAnswerResult
 from app.capabilities.repository import build_repository_capability
-from app.core.config import Settings
-from app.models.artifact import EvidenceItem, EvidencePack
-from app.models.artifact import Artifact, ReportArtifactContent
+from app.agent_platform.core.config import Settings
+from app.agent_platform.models.artifact import EvidenceItem, EvidencePack
+from app.agent_platform.models.artifact import Artifact, ReportArtifactContent
 from app.models.query import QueryResponse
-from app.models.task import TaskRequest
-from app.rag.observability import TraceRecorder
+from app.agent_platform.models.task import TaskRequest
+from app.agent_platform.observability.trace_recorder import TraceRecorder
 from app.services.sqlite_store import SQLiteStateStore
 from app.services.state import InMemoryState
 
@@ -90,7 +90,7 @@ class FakeRagFacade:
     def grounded_answer(self, request, *, trace_context=None):
         self.calls.append('grounded_answer')
         return GroundedAnswerResult(
-            answer='来自 facade 的回答',
+            answer='来自 facade 的回�?,
             evidence_pack=self.retrieve_evidence(request, trace_context=trace_context),
             citations=[],
             grounded=True,
@@ -226,7 +226,7 @@ class ToolRegistryTests(unittest.TestCase):
 
         self.assertEqual(context_result.documents[0].doc_id, 'doc-1')
         self.assertEqual(evidence_result.evidence_items[0].chunk_id, 'chunk-rag')
-        self.assertEqual(answer_result.answer, '来自 facade 的回答')
+        self.assertEqual(answer_result.answer, '来自 facade 的回�?)
         self.assertEqual(query_result.answer, 'query::rewritten::能力是否启用')
         self.assertEqual(
             self.fake_rag.calls,
