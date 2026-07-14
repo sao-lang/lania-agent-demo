@@ -1094,3 +1094,26 @@ ConsentStore 持久化
 |---|---|---|
 | D15 | 防护链 → StepExecutor 中增加 replan 触发点 | replan 检测点插入防护链的 post_exec 层 |
 | D16 | AgentType → 子 agent 继承规则 | 定义子 agent 默认继承父级的哪些配置（防护链/记忆/策略），哪些可以覆盖 |
+
+### 第七批：Agent 间通信与审批
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D17 | 新增章节：AgentBus | agent 间消息总线，支持三种通信模式：request_reply（一问一答）、pub_sub（广播事件）、negotiate（多轮协商）；解决当前主从模式下 agent 间只能通过主 agent 转发的效率瓶颈 |
+| D18 | 新增章节：审批工作流（ApprovalWorkflow） | 流程级别的审批节点，支持条件触发、指定审批人、超时自动拒绝、拒绝后策略（abort/skip/modify）；区别于当前工具级别的 consent 弹窗 |
+
+### 第八批：评测与可观测
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D19 | 新增章节：Agent 评测框架 | EvalCase 定义（预期工具序列、禁止工具、步数/成本上限）+ EvalReport 统计（通过率、失败详情、平均成本/步数）；支持自动化回归测试 |
+| D20 | 新增章节：Session Recording | 每步调用完整快照（LLM 输入/输出、工具调用、防护链决策）+ 支持事后逐步骤回放与对比 |
+| D21 | 新增章节：Prompt 版本管理 | PromptRegistry 支持模板版本注册、active 版本切换、A/B 流量分配；与 EvalSuite 联动可量化 prompt 改动的影响 |
+
+### 第九批：生产级加固
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D22 | 防护链 → StepExecutor 增加 CheckpointManager | 每步完成后保存检查点（step + 状态快照），支持 crash 后从中断处恢复执行，避免副作用重复执行 |
+| D23 | AgentOrchestrator → 全局预算池 BudgetPool | 所有子 agent 共享的全局计数器（总步数/总工具调用/总 token），任一超限终止整个任务；替代当前单 agent 级别的 AgentBudget |
+| D24 | 简单对话模式 → AgentType 简化配置 | 新增 simple_chat agent_type，默认关闭防护链中非必要的安全检查（Sandbox/PolicyEngine），使用最短路径（IntentRecognizer → AgentLoop）|
