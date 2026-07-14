@@ -1558,6 +1558,192 @@ class AgentPlatformContainer:
         """同步执行一条命令，返回结果文本。"""
 ```
 
+### 4.3 对外 API 总览
+
+> 以下为应用层开发者需要了解的完整 API 面。分三类：**导入类**（直接 import）、**协议接口**（需实现）、**容器方法**（需调用）。
+
+#### 4.3.1 核心导入类
+
+```python
+# agent_platform/__init__.py 公开导出
+
+from agent_platform import AgentPlatformContainer   # 主容器
+from agent_platform.settings import PlatformSettings  # 平台配置
+```
+
+**`PlatformSettings` 构造参数：**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `llm_api_key` | `str` | 必填 | LLM API 密钥 |
+| `llm_model` | `str` | `"gpt-4o"` | 默认模型名 |
+| `llm_base_url` | `str \| None` | `None` | OpenAI 兼容 API 地址 |
+| `db_path` | `str \| None` | `None` | SQLite 文件路径（默认自动生成） |
+| `agents_dir` | `str \| None` | `None` | 原语文件目录路径 |
+| `auto_import_skills` | `bool` | `True` | 启动时自动扫描 skill |
+| `auto_import_agents` | `bool` | `True` | 启动时自动扫描 agent 定义 |
+| `auto_connect_mcp` | `bool` | `True` | 启动时自动连接 MCP |
+| `enable_file_hooks` | `bool` | `True` | 启用文件式 ToolHook |
+| `max_context_tokens` | `int` | `32000` | LLM 上下文窗口上限 |
+
+#### 4.3.2 协议接口（需应用层实现）
+
+```python
+from agent_platform.llm.protocol import LLM, ChatResponse, StreamChunk
+from agent_platform.store.protocol import StateStore
+from agent_platform.hooks.protocol import ToolHook, HookDecision, HOOK_EVENTS
+from agent_platform.observability.protocol import TraceExporter, AgentTrace, Span
+```
+
+| 协议 | 需实现的方法 | 用途 | 内置实现 |
+|---|---|---|---|
+| **`LLM`** | `chat(messages, tools) → ChatResponse`<br>`chat_stream(messages, tools) → AsyncIterator[StreamChunk]` | LLM 调用 | `OpenAILLM` |
+| **`StateStore`** | 31 个方法（Task/TaskRun/Artifact/Session/UserProfile/AgentDef/Skill/Prompt/MCP/Consent/PolicyProfile） | 持久化存储 | `SQLiteStateStore` |
+| **`ToolHook`** | `on_event(event: HOOK_EVENTS, payload: dict) → HookDecision` | 工具执行钩子 | `FileHookRunner` |
+| **`TraceExporter`** | `export(trace: AgentTrace) → None` | 可观测导出 | `ConsoleExporter` |
+
+#### 4.3.3 容器 API 分组
+
+**生命周期：**
+
+```python
+container = AgentPlatformContainer(
+    settings: PlatformSettings,
+    llm: LLM | None = None,        # 默认使用 OpenAILLM
+    store: StateStore | None = None, # 默认使用 SQLiteStateStore
+    state: InMemoryState | None = None,
+)
+container.start(start_worker: bool = False)    # 启动后台服务
+container.shutdown()                            # 释放资源
+container.reload_agents() -> int               # 重载文件 Agent（返回数量）
+```
+
+**工具注册：**
+
+```python
+container.register_default_tools()                # 注册内置工具（天气/金融/日历等 20+）
+container.register_tool(tool: AgentTool)          # 注册自定义工具
+container.register_external_services(             # 注入外部服务（RAG、DB 等）
+    services: dict[str, Any]
+)
+```
+
+**原语管理：**
+
+```python
+# Agent 定义
+container.list_agents() -> list[AgentDefinition]
+container.get_agent(agent_id: str) -> AgentDefinition | None
+container.create_agent(payload: dict, sync_to_file: bool = False) -> AgentDefinition
+container.update_agent(agent_id: str, payload: dict) -> AgentDefinition
+container.delete_agent(agent_id: str) -> None
+container.set_default_agent(agent_id: str) -> None
+
+# Skill
+container.list_skills() -> list[SkillSpec]
+container.get_skill(skill_id: str) -> SkillSpec | None
+container.create_skill(payload: dict) -> SkillSpec
+container.update_skill(skill_id: str, payload: dict) -> SkillSpec
+container.delete_skill(skill_id: str) -> None
+
+# Prompt
+container.list_prompts() -> list[PromptTemplate]
+container.get_prompt(prompt_id: str) -> PromptTemplate | None
+container.create_prompt(payload: dict) -> PromptTemplate
+container.update_prompt(prompt_id: str, payload: dict) -> PromptTemplate
+container.delete_prompt(prompt_id: str) -> None
+container.render_prompt(name: str, **variables) -> str
+
+# LLM 配置
+container.list_llm_providers() -> list[LlmProvider]
+container.set_llm_provider(name: str, config: dict) -> LlmProvider
+container.delete_llm_provider(name: str) -> None
+container.test_llm_connection(name: str) -> bool
+container.get_active_llm() -> str
+container.set_active_llm(name: str) -> None
+container.set_llm_route(purpose: str, provider: str) -> None
+
+# MCP Server
+container.list_mcp_servers() -> list[McpServerConfig]
+container.create_mcp_server(payload: dict) -> McpServerConfig
+container.delete_mcp_server(mcp_id: str) -> None
+container.connect_mcp(mcp_id: str) -> bool
+container.disconnect_mcp(mcp_id: str) -> None
+container.list_mcp_tools() -> list[dict]
+
+# 扩展点注册
+container.register_tool_hook(hook: ToolHook) -> None
+container.register_trace_exporter(exporter: TraceExporter) -> None
+
+# 系统设置
+container.get_settings() -> dict
+container.get_setting(key: str) -> Any
+container.set_setting(key: str, value: Any) -> None
+
+# Instructions / Hooks
+container.create_instruction(payload: dict) -> Instruction
+container.list_instructions() -> list[Instruction]
+container.delete_instruction(instruction_id: str) -> None
+container.list_hooks() -> list[HookDefinition]
+container.create_hook(payload: dict) -> HookDefinition
+container.delete_hook(hook_id: str) -> None
+```
+
+**Agent 交互（核心）：**
+
+```python
+# 流式对话（返回 SSE 事件流）
+container.process_chat(
+    message: str,
+    session_id: str | None = None,
+    agent_name: str | None = None,
+    mode: str = "auto",                          # chat / plan / autopilot / auto
+) -> AsyncIterator[AgentEvent]
+
+# 同步命令
+container.execute_command(
+    message: str,
+    session_id: str | None = None,
+) -> str
+```
+
+#### 4.3.4 关键数据类型
+
+```python
+# AgentEvent 事件类型
+AgentEvent.type  # "delta" | "tool_call" | "tool_result" | "plan"
+                 # | "step_consent_required" | "step_consent_granted"
+                 # | "step_disclosed" | "client_command"
+                 # | "safety_blocked" | "reflection"
+                 # | "ask_user" | "error" | "completed"
+
+# ToolHook 事件类型
+HOOK_EVENTS = Literal[
+    "before_tool",      # 工具执行前（可阻断）
+    "after_tool",       # 工具执行后（只读）
+    "tool_failed",      # 工具执行失败
+    "before_react_turn",# ReAct 轮次开始
+    "after_react_turn", # ReAct 轮次结束
+    "run_started",      # Agent 执行开始
+    "run_completed",    # Agent 执行完成
+    "run_failed",       # Agent 执行失败
+]
+
+# HookDecision（阻断结果）
+@dataclass
+class HookDecision:
+    allow: bool = True
+    reason: str = ""
+    override_result: Any | None = None
+    audit_log: dict[str, Any] | None = None
+
+# AgentEvent 构造（简化）
+@dataclass
+class AgentEvent:
+    type: str
+    data: dict[str, Any]
+```
+
 ---
 
 ## 五、原语系统与防护链集成
