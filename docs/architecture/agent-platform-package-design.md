@@ -1560,33 +1560,40 @@ class AgentPlatformContainer:
 
 ### 4.3 对外 API 总览
 
-> 以下为应用层开发者需要了解的完整 API 面。分三类：**导入类**（直接 import）、**协议接口**（需实现）、**容器方法**（需调用）。
+> 完整 API 面，按实施状态分三组：**✅ 已实现**（可直接使用）、**🔧 已设计**（方案就绪待开发）、**📋 已规划**（路线图中）。
+>
+> 开发阶段请以此清单为对照，覆盖全部 50+ API 点。
+
+---
 
 #### 4.3.1 核心导入类
 
 ```python
-# agent_platform/__init__.py 公开导出
-
-from agent_platform import AgentPlatformContainer   # 主容器
-from agent_platform.settings import PlatformSettings  # 平台配置
+from agent_platform import AgentPlatformContainer
+from agent_platform.settings import PlatformSettings
 ```
 
 **`PlatformSettings` 构造参数：**
 
-| 参数 | 类型 | 默认值 | 说明 |
-|---|---|---|---|
-| `llm_api_key` | `str` | 必填 | LLM API 密钥 |
-| `llm_model` | `str` | `"gpt-4o"` | 默认模型名 |
-| `llm_base_url` | `str \| None` | `None` | OpenAI 兼容 API 地址 |
-| `db_path` | `str \| None` | `None` | SQLite 文件路径（默认自动生成） |
-| `agents_dir` | `str \| None` | `None` | 原语文件目录路径 |
-| `auto_import_skills` | `bool` | `True` | 启动时自动扫描 skill |
-| `auto_import_agents` | `bool` | `True` | 启动时自动扫描 agent 定义 |
-| `auto_connect_mcp` | `bool` | `True` | 启动时自动连接 MCP |
-| `enable_file_hooks` | `bool` | `True` | 启用文件式 ToolHook |
-| `max_context_tokens` | `int` | `32000` | LLM 上下文窗口上限 |
+| 参数 | 类型 | 默认值 | 说明 | 状态 |
+|---|---|---|---|---|
+| `llm_api_key` | `str` | 必填 | LLM API 密钥 | ✅ |
+| `llm_model` | `str` | `"gpt-4o"` | 默认模型名 | ✅ |
+| `llm_base_url` | `str \| None` | `None` | OpenAI 兼容 API 地址 | ✅ |
+| `db_path` | `str \| None` | `None` | SQLite 文件路径 | ✅ |
+| `agents_dir` | `str \| None` | `None` | 原语文件目录路径 | ✅ |
+| `auto_import_skills` | `bool` | `True` | 启动时自动扫描 skill | ✅ |
+| `auto_import_agents` | `bool` | `True` | 启动时自动扫描 agent 定义 | ✅ |
+| `auto_connect_mcp` | `bool` | `True` | 启动时自动连接 MCP | ✅ |
+| `enable_file_hooks` | `bool` | `True` | 启用文件式 ToolHook | ✅ |
+| `max_context_tokens` | `int` | `32000` | LLM 上下文窗口上限 | ✅ |
+| `max_steps` / `max_tool_calls` | `int` | — | 预算参数提升为构造参数 (D10) | 📋 |
 
-#### 4.3.2 协议接口（需应用层实现）
+---
+
+#### 4.3.2 ✅ 已实现 API（42 项）
+
+##### 协议接口（需应用层实现）
 
 ```python
 from agent_platform.llm.protocol import LLM, ChatResponse, StreamChunk
@@ -1602,23 +1609,20 @@ from agent_platform.observability.protocol import TraceExporter, AgentTrace, Spa
 | **`ToolHook`** | `on_event(event: HOOK_EVENTS, payload: dict) → HookDecision` | 工具执行钩子 | `FileHookRunner` |
 | **`TraceExporter`** | `export(trace: AgentTrace) → None` | 可观测导出 | `ConsoleExporter` |
 
-#### 4.3.3 容器 API 分组
-
-**生命周期：**
+##### 容器生命周期
 
 ```python
 container = AgentPlatformContainer(
     settings: PlatformSettings,
-    llm: LLM | None = None,        # 默认使用 OpenAILLM
-    store: StateStore | None = None, # 默认使用 SQLiteStateStore
+    llm: LLM | None = None,          # 默认使用 OpenAILLM
+    store: StateStore | None = None,  # 默认使用 SQLiteStateStore
     state: InMemoryState | None = None,
 )
 container.start(start_worker: bool = False)    # 启动后台服务
 container.shutdown()                            # 释放资源
-container.reload_agents() -> int               # 重载文件 Agent（返回数量）
 ```
 
-**工具注册：**
+##### 工具注册
 
 ```python
 container.register_default_tools()                # 注册内置工具（天气/金融/日历等 20+）
@@ -1628,13 +1632,13 @@ container.register_external_services(             # 注入外部服务（RAG、D
 )
 ```
 
-**原语管理：**
+##### 原语管理
 
 ```python
 # Agent 定义
 container.list_agents() -> list[AgentDefinition]
 container.get_agent(agent_id: str) -> AgentDefinition | None
-container.create_agent(payload: dict, sync_to_file: bool = False) -> AgentDefinition
+container.create_agent(payload: dict) -> AgentDefinition
 container.update_agent(agent_id: str, payload: dict) -> AgentDefinition
 container.delete_agent(agent_id: str) -> None
 container.set_default_agent(agent_id: str) -> None
@@ -1689,7 +1693,7 @@ container.create_hook(payload: dict) -> HookDefinition
 container.delete_hook(hook_id: str) -> None
 ```
 
-**Agent 交互（核心）：**
+##### Agent 交互（核心）
 
 ```python
 # 流式对话（返回 SSE 事件流）
@@ -1707,29 +1711,66 @@ container.execute_command(
 ) -> str
 ```
 
-#### 4.3.4 关键数据类型
+##### 内部引擎组件（一般不直接调用，但可注入/扩展）
 
 ```python
-# AgentEvent 事件类型
+# 执行引擎
+from agent_platform.agents.brain.intent_recognizer import IntentRecognizer
+from agent_platform.agents.brain.mode_router import ModeRouter
+from agent_platform.agents.brain.agent_loop import AgentLoop, AgentBudget
+from agent_platform.agents.brain.step_executor import StepExecutor
+from agent_platform.agents.brain.context_manager import BrainContextManager
+from agent_platform.agents.brain.consent_store import ConsentStore
+
+# 安全引擎
+from agent_platform.harness.safety.engine import SafetyEngine
+from agent_platform.harness.policy import PolicyEngine
+from agent_platform.harness.guardrails import GuardrailEngine
+from agent_platform.harness.hooks import EventBus
+from agent_platform.harness.sandbox import ToolSandbox
+
+# 服务层
+from agent_platform.services.customization_engine import CustomizationEngine
+from agent_platform.services.agent_def_manager import AgentDefManager
+from agent_platform.services.session_manager import SessionManager
+from agent_platform.services.skill_manager import SkillManager
+from agent_platform.services.prompt_manager import PromptManager
+from agent_platform.services.mcp_manager import McpManager
+from agent_platform.services.memory_commit_gate import MemoryCommitGate
+from agent_platform.services.user_profile_service import UserProfileService
+from agent_platform.services.rate_limiter import RateLimiter
+from agent_platform.services.agent_cache import AgentCache
+from agent_platform.services.instructions_manager import InstructionsManager
+from agent_platform.services.file_instruction_manager import FileInstructionManager
+from agent_platform.services.llm_config_manager import LlmConfigManager
+
+# 工具系统
+from agent_platform.agents.tools.registry import ToolRegistry
+from agent_platform.agents.tools.base import AgentTool, ToolSchema, ToolContext, ToolOutputEnvelope
+from agent_platform.capabilities.registry import CapabilityRegistry
+
+# 存储层
+from agent_platform.services._state import InMemoryState
+from agent_platform.services._store import SQLiteStateStore
+```
+
+##### 关键数据类型
+
+```python
+# AgentEvent 事件
 AgentEvent.type  # "delta" | "tool_call" | "tool_result" | "plan"
                  # | "step_consent_required" | "step_consent_granted"
                  # | "step_disclosed" | "client_command"
                  # | "safety_blocked" | "reflection"
                  # | "ask_user" | "error" | "completed"
 
-# ToolHook 事件类型
+# ToolHook 事件
 HOOK_EVENTS = Literal[
-    "before_tool",      # 工具执行前（可阻断）
-    "after_tool",       # 工具执行后（只读）
-    "tool_failed",      # 工具执行失败
-    "before_react_turn",# ReAct 轮次开始
-    "after_react_turn", # ReAct 轮次结束
-    "run_started",      # Agent 执行开始
-    "run_completed",    # Agent 执行完成
-    "run_failed",       # Agent 执行失败
+    "before_tool", "after_tool", "tool_failed",
+    "before_react_turn", "after_react_turn",
+    "run_started", "run_completed", "run_failed",
 ]
 
-# HookDecision（阻断结果）
 @dataclass
 class HookDecision:
     allow: bool = True
@@ -1737,7 +1778,233 @@ class HookDecision:
     override_result: Any | None = None
     audit_log: dict[str, Any] | None = None
 
-# AgentEvent 构造（简化）
+# 工具 Schema
+@dataclass
+class ToolSchema:
+    name: str; input_schema: dict; output_schema: dict
+    risk_level: ToolRiskLevel           # low / medium / high / critical
+    execution_target: ToolExecutionTarget  # server / client
+
+# 意图识别与模式路由
+@dataclass
+class IntentDecision:
+    complexity: Complexity               # simple / moderate / complex
+    suggested_sources: list[KnowledgeSource]
+    suggested_mode: SuggestedMode        # chat / autopilot / plan / plan_confirm
+    risk_level: RiskLevel                # low / medium / high / critical
+
+# 确认
+class ConsentScope: NONE, SESSION, PERSISTENT
+
+@dataclass
+class ConsentResponse:
+    action: Literal["approve", "deny"]
+    remember: ConsentScope = ConsentScope.NONE
+
+# AgentBudget
+@dataclass
+class AgentBudget:
+    max_steps: int = 8
+    max_tool_calls: int = 16
+```
+
+---
+
+#### 4.3.3 🔧 已设计 API（待实现，方案已就绪，12 项）
+
+```python
+# ── Agent 定义统一模型（§5.7 / D9）──
+
+container.reload_agents() -> int               # 重新扫描文件 Agent
+container.create_agent(payload, sync_to_file=True) -> AgentDefinition  # 写回文件
+
+# AgentDefRegistry 双源合并
+from agent_platform.primitives.agent_def_registry import AgentDefRegistry
+registry = AgentDefRegistry(file_manager=agent_def_manager, store=sqlite_store)
+registry.list_all() -> list[AgentDefinition]
+registry.get(name) -> AgentDefinition | None
+
+
+# ── 子 Agent 映射（§5.6 / D12）──
+
+from agent_platform.primitives.subagent_adapter import (
+    SubAgentDef, AgentDefSubAgentAdapter,
+)
+
+# AgentDefSubAgentAdapter.to_sub_agent_def(agent_def) -> SubAgentDef
+# SubAgentDef 字段:
+#   name, system_prompt, allowed_tools, model,
+#   max_steps, max_tool_calls, role, agent_def_id
+
+# CustomizationEngine 扩展
+engine.get_sub_agent(name: str) -> SubAgentDef | None
+engine.list_sub_agents() -> list[SubAgentDef]
+
+
+# ── AgentOrchestrator（§5.6 / D12）──
+
+from agent_platform.agents.brain.orchestrator import AgentOrchestrator
+
+orchestrator = AgentOrchestrator(container)
+
+# 串行
+result = await orchestrator.spawn(
+    name="code-reviewer",
+    task="审查这段 SQL",
+    ctx=None,                         # 可选上下文传参
+) -> SubAgentResult
+# SubAgentResult: agent_name, status, summary, artifacts, agent_def_id
+
+# 并行
+results = await orchestrator.spawn_parallel([
+    ("doc_parser", "解析文档"),
+    ("semantic_analyzer", "语义分析"),
+]) -> list[SubAgentResult]
+
+
+# ── TaskDecomposer + Replan（§八 D11）──
+
+from agent_platform.agents.brain.planner import TaskDecomposer
+
+decomposer = TaskDecomposer()
+decomposer.decompose(task: str, max_subtasks: int = 5) -> list[SubTaskDef]
+# SubTaskDef: name, description, dependencies, estimated_tools
+
+# AgentLoop 内部 replan 触发条件:
+#   意外发现 / tool_failed / 新方向 / 计划耗尽
+
+
+# ── 三层记忆架构（§八 D14）──
+
+# MemoryCommitGate 内部升级
+# FactMemory      — 结构化事实/偏好（LLM 审核后持久化）
+# EpisodicMemory  — 向量检索对话历史
+# EntityMemory    — 实体关系图
+
+
+# ── Context Compactor（§八 D4）──
+
+# BrainContextManager 内部:
+#   超出 token 阈值时自动触发
+#   summarize → 历史摘要
+#   prune → 裁剪低价值轮次
+
+
+# ── AgentBus（§八 D17）──
+
+# AgentOrchestrator 之上，子 Agent 间消息总线
+# 三种通信模式:
+#   request_reply — 一问一答
+#   pub_sub       — 广播事件
+#   negotiate     — 多轮协商
+
+
+# ── BudgetPool（§八 D23）──
+
+# AgentOrchestrator 上方全局预算计数器
+# 总步数 / 总工具调用 / 总 token 任一超限 → 终止整个任务
+
+
+# ── CheckpointManager（§八 D22）──
+
+# StepExecutor 每步完成后保存检查点
+# crash 后从中断处恢复执行，避免副作用重复执行
+
+
+# ── DelegateTool 扩展（D13）──
+
+# delegation_tools.py 中增加 DelegateTool
+# 主 Agent 通过普通工具调用即可委派子任务
+# container.register_tool(DelegateTool(orchestrator))
+```
+
+---
+
+#### 4.3.4 📋 已规划 API（路线图中，9 项）
+
+```python
+# ── 审批工作流（D18）──
+
+from agent_platform import ApprovalWorkflow, ApprovalNode
+
+container.register_workflow(
+    name: str,
+    workflow: ApprovalWorkflow,
+) -> None
+
+ApprovalWorkflow(nodes=[
+    ApprovalNode(
+        name: str,
+        trigger: Callable[[Context], bool],    # 条件触发
+        approvers: list[str],                   # 指定审批人
+        timeout: int,                           # 超时自动拒绝（秒）
+        on_reject: Literal["abort", "skip", "modify"],
+    ),
+])
+
+
+# ── Agent 评测框架（D19）──
+
+from agent_platform.eval import EvalCase, EvalReport
+
+case = EvalCase(
+    input="...",
+    expected_tool_sequence=[...],
+    forbidden_tools=[...],
+    max_steps=...,
+    max_cost=...,
+)
+report = EvalReport(cases=[...])
+# report.pass_rate, report.failures, report.avg_cost, report.avg_steps
+
+
+# ── Session Recording / 回放（D20）──
+
+# 每步调用完整快照
+#   LLM 输入/输出、工具调用、防护链决策
+# 支持事后逐步骤回放与对比
+
+
+# ── Prompt 版本管理（D21）──
+
+# PromptRegistry 支持:
+#   模板版本注册
+#   active 版本切换
+#   A/B 流量分配
+#   与 EvalSuite 联动量化 prompt 改动影响
+
+
+# ── 其他规划项（D7 / D10 / D16 / D24）──
+
+# ToolContext[Generic[T]] 泛型改造（D7）
+# ToolDef.execution_mode: sequential / parallel（D10）
+# AgentType → 子 Agent 继承规则（D16）
+# simple_chat agent_type: 最短路径模式（D24）
+```
+
+---
+
+#### 4.3.5 实施路线图
+
+```python
+"""
+阶段            API 范围                          优先级
+──────────────────────────────────────────────────────────
+第一波 (安全+)   PolicyEngine/GuardrailEngine/      最高
+                ConsentStore/MemoryCommitGate/
+                UserProfileService → 已实现
+
+第二波 (可观测)  EventBus/ToolSandbox/              高
+                CircuitBreaker/DelegationTool → 已实现
+                AgentOrchestrator/SubAgent(设计) → 待实现
+
+第三波 (治理)    AgentBudget/RateLimiter/AgentCache → 已实现  中
+                BudgetPool/Checkpoint(设计) → 待实现
+
+后续 (场景)      ApprovalWorkflow/AgentBus/         待规划
+                EvalSuite/SessionRecording
+"""
+```
 @dataclass
 class AgentEvent:
     type: str
@@ -1811,7 +2078,7 @@ class AgentEvent:
 
 每条接线在代码中对应一个具体的注入点：
 
-`python
+```python
 # ① System Prompt — InstructionsManager + AgentDef.instructions
 class InstructionsManager:
     def build_system_prompt(self, agent_def=None) -> str:
@@ -1855,7 +2122,7 @@ class CustomizationEngine:
         tools = await self._mcp_manager.connect(config)
         for tool in tools:
             self._tool_registry.register(McpAgentToolAdapter(tool))
-`
+```
 
 ### 5.4 原语加载与防护链生命周期的对齐
 
