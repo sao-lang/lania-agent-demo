@@ -370,6 +370,39 @@ async def _execute_hooks(self, event, payload):
     return HookDecision(allow=True)
 ```
 
+#### ToolHook 与 ToolSandbox 的执行联动
+
+`before_tool` hook 和 `ToolSandbox` 是两层独立的防护，它们按固定顺序配合：
+
+```
+StepExecutor.execute_step(tool_call)
+  │
+  ├─ 1. before_tool hook（所有注册的 hook 依次执行）
+  │     ├─ 通过 → 继续
+  │     └─ 阻断 → 返回 HookDecision(allow=False)，不执行工具
+  │
+  ├─ 2. 检查工具在白名单中（agent_def.allowed_tools）
+  │     ├─ 在白名单中 → 继续
+  │     └─ 不在 → 拒绝执行
+  │
+  ├─ 3. 检查工具 risk_level
+  │     ├─ low    → StepExecutor._tool_registry.run()   # 内联执行
+  │     ├─ medium → asyncio.to_thread(...)               # 线程隔离
+  │     ├─ high   → ToolSandbox.run_in_sandbox(...)      # 沙箱隔离
+  │     └─ critical → 拒绝执行（须审批）
+  │
+  ├─ 4. after_tool hook（只读审计）
+  │
+  └─ 5. tool_failed hook（仅在工具抛出异常时触发）
+```
+
+**关键规则**：
+- before_tool hook 阻断后，Sandbox 不会被执行——避免不必要的资源开销
+- risk_level 的默认值来自工具定义，但 `agent_def.risk_level_overrides` 可以按 agent 类型覆盖
+- after_tool hook 是只读的，不能阻断或修改结果
+- tool_failed hook 可以触发告警、写入错误日志、或执行降级策略
+```
+
 ---
 
 ### 2.4 Observability Export — 可观测导出
@@ -465,6 +498,46 @@ container = AgentPlatformContainer(
 )
 container.register_tool_hook(AuditLogger())     # 扩展点 3
 container.register_trace_exporter(OTelExporter())  # 扩展点 4
+
+### 2.6 Agent 类型系统 — 工具可见性与权限模型
+
+Agent 类型决定了 LLM 能「看到」什么和能「调用」什么。这是让 LLM 不跑偏的第一道闸门。
+
+```
+Agent 定义 (AgentDef)
+├── agent_type: "coding" | "document_analysis" | "research" | "chat"
+├── allowed_tools: [read_file, search_code, ...]    ← LLM 只能看到这些工具
+├── risk_level_overrides: {shell_execute: "critical"} ← 覆盖工具默认风险等级
+├── max_turns: 50                                    ← 预算上限
+├── default_system_prompt: "你是 Coding Agent..."    ← 角色设定
+└── hooks: [audit_all, block_dangerous]              ← 生效的钩子
+```
+
+**规则**：
+
+1. `AgentLoop.run()` 只向 LLM 暴露 `agent_def.allowed_tools` 中的工具
+2. 即使 LLM 构造了不在白名单中的工具名，`StepExecutor` 会直接拒绝执行
+3. 未指定 `allowed_tools` 时，使用该 `agent_type` 的默认工具集
+4. 应用层可以在注册容器时注入自定义的 `agent_type → tools` 映射
+
+```python
+# 应用层注册 agent 类型
+container.register_agent_type("coding", default_tools=[
+    read_file_tool, search_code_tool, run_test_tool,
+])
+container.register_agent_type("document", default_tools=[
+    retrieve_docs_tool, summarize_tool, extract_entities_tool,
+])
+
+# 创建 agent 实例时自动继承类型默认工具集
+container.create_agent({
+    "name": "my-coding-agent",
+    "agent_type": "coding",
+    "allowed_tools": ["read_file", "search_code", "run_test"],
+})
+```
+
+**为什么这是第一道闸门**：LLM 只能从它看到的工具列表中做选择。如果 coding agent 看不到 `database_query` 工具，它就不可能调用数据库。这比任何运行时检查都更根本。
 ```
 
 ## 三、`AgentPlatformContainer` — 唯一入口
@@ -796,6 +869,8 @@ class AppContainer:
 | M38-M51 | `app/agent_platform/**/*.py` 14+ 个文件 | `from app.services.*` → `from app.agent_platform.services._state` / `_store` |
 | M52 | `app/agent_platform/agents/memory.py` | `FrontmatterParser` 引用处理 |
 | M53 | 3 个引用 `app.workflows.*` 的文件 | 清理或替换 |
+| M54 | `app/agent_platform/services/agent_service.py` | 移除 Legacy Path（`_process_legacy`、`_resolve_mode`、`_handle_*_mode`、`execute_command`、`execute_plan` 等关键词驱动方法），仅保留 Brain 路径（`IntentRecognizer` → `ModeRouter` → `AgentLoop`） |
+| M55 | `app/container.py` | 移除 `IntentMatcher` 的创建和注入，移除 `plan_generator`/`plan_executor`/`repository`/`database` 等旧依赖向 `AgentService` 的注入 |
 
 ### 6.3 删除文件
 
@@ -808,6 +883,7 @@ class AppContainer:
 | D5 | `app/agent_platform/agents/artifacts.py` | 旧产物处理 |
 | D6 | `app/agent_platform/task_worker.py` | 旧任务 Worker |
 | D7 | `app/agent_platform/runtime_contract_adapters.py` | 旧契约适配（引用已删除的 workflow） |
+| D8 | `app/agent_platform/services/intent_matcher.py` | 关键词驱动意图匹配器，已被 `IntentRecognizer`（LLM 驱动）替代 |
 
 ---
 
@@ -818,19 +894,30 @@ class AppContainer:
 ├─ 1. N1-N2: 实现 _state.py + _store.py
 ├─ 2. M3-M51: 修复全部 import 路径
 ├─ 3. M52-M53: 处理 FrontmatterParser + workflows 引用
-└─ 4. 验证: python -c "from app.agent_platform import *" 不报错
+└─ 4. 验证:
+   ├─ python -c "from app.agent_platform.agents.brain import IntentRecognizer, ModeRouter, AgentLoop" 不报错
+   ├─ python -c "from app.agent_platform.services._state import InMemoryState" 不报错
+   └─ python -c "from app.agent_platform.services._store import SQLiteStateStore" 不报错
 
 第二周：阶段二（瘦身）
 ├─ 1. D1: 删除 api/ 目录
 ├─ 2. M2: 更新 main.py
-├─ 3. D2-D7: 删除旧文件
-└─ 4. 验证: 启动应用，对话功能正常
+├─ 3. M54-M55: 移除 Legacy Path（agent_service.py + container.py）
+├─ 4. D2-D8: 删除旧文件（含 intent_matcher.py）
+└─ 5. 验证:
+   ├─ 旧 API 端点（/api/v1/agent/command、/api/v1/admin/agents 等）返回 404
+   ├─ POST /api/v1/agent/chat 返回 SSE 流，对话功能正常
+   └─ container.agent_service.process() 走 Brain 路径（可通过日志确认 IntentRecognizer 被调用）
 
 第三周：阶段三（提取）
 ├─ 1. N3-N4: 创建 AgentPlatformContainer + PlatformSettings
 ├─ 2. M1: 改造 AppContainer 组合 AgentPlatformContainer
 ├─ 3. 编写 pyproject.toml
-└─ 4. 验证: pip install 后能在新项目中使用
+└─ 4. 验证:
+   ├─ pip install -e . 安装成功
+   ├─ 在新目录中执行最简集成示例（from agent_platform import AgentPlatformContainer）不报错
+   ├─ container.process_chat("hello") 返回事件流
+   └─ container.list_agents() 返回空列表（API 方法调用正常）
 ```
 
 ---
@@ -934,3 +1021,60 @@ ConsentStore 持久化
         ▼                        ▼                        ▼
                     AgentPlatformContainer
 ```
+
+### 9.6 每波接入的优先级理由
+
+| 波次 | 功能 | 不接入的风险 | 接入的收益 |
+|---|---|---|---|
+| **第一波** | MemoryCommitGate | LLM 能在一次对话中写入错误的用户偏好或虚假记忆，污染后续所有对话；记忆永久驻留 working memory 永不清理 | 每次 memory commit 前由 LLM 审核，只有高置信度信息被持久化；working memory 定期 GC |
+| **第一波** | UserProfileService | 平台不认识用户，无法区分不同用户的偏好、权限和上下文；每个对话都是"匿名模式" | 按用户记忆偏好，Agent 可个性化响应；per-user 权限边界确保用户不会越权操作 |
+| **第一波** | PolicyEngine | LLM 可以自由决策执行任何操作，没有安全策略把关。即使 hook 能阻断，也缺乏结构化策略管理 | 策略集中管理（YAML），按 agent 类型/用户角色/操作风险分级控制，比 hook 的 if-else 更可维护 |
+| **第一波** | GuardrailEngine | LLM 可能输出暴力、涉政、PII 等内容，没有输入/输出过滤层 | 输入 guardrail 拦截恶意 prompt 注入，输出 guardrail 过滤敏感内容，双向保护 |
+| **第一波** | ConsentStore 持久化 | 用户确认记录只存在内存中，服务重启后所有 consent 丢失，高风险工具需要反复确认 | consent 持久化到 SQLite，重启后恢复，用户只需确认一次 |
+| **第二波** | EventBus 触发 | AgentLoop 执行过程没有可观测性，调试困难 | 每次 tool_call、hook 阻断、mode_switch 都发出事件 |
+| **第二波** | ToolSandbox 分级 | 所有工具内联执行，高风险工具（shell、文件删除等）没有隔离保障 | 低风险内联、中风险线程、高风险沙箱，执行失败不影响主进程 |
+| **第二波** | 重试+熔断 | 网络抖动或 LLM 超时导致工具调用失败，不做重试直接向用户报错 | 指数退避重试 3 次，连续失败触发熔断，避免级联故障 |
+| **第二波** | 委派工具注册 | 每次新增工具需要改代码、重新注册，扩展成本高 | 通过 MCP 或 register_tool() 动态注册，运行时即可生效 |
+| **第三波** | 预算管理 | LLM 可能无限循环工具调用，tokens 和耗时不可控 | max_steps、max_tool_calls、max_cost 三层预算，超限主动中止 |
+| **第三波** | 速率限制 | 同一用户/工具可能被高频调用，LLM 不考虑调用频率 | 滑动窗口限流，超限返回 429，LLM 收到后自行降速 |
+| **第三波** | Agent 缓存 | 相同工具调用重复执行（如 list_files('/src')） | 按工具名+参数哈希缓存结果，TTL 内直接返回，减少 LLM 等待时间 |
+
+**为什么第一波先于第二波**：没有安全（PolicyEngine + GuardrailEngine）的情况下开放可观测和沙箱，相当于先装监控再装锁。记忆污染（MemoryCommitGate）不先解决，后续的优化都在错误的数据上做。
+
+**为什么第三波最后**：预算、限流、缓存都是优化层，底层安全+执行稳定后才需要。如果 LLM 在第三波之前就跑偏了，速率限制和缓存加速都没有意义。
+
+---
+
+## 十、后续补充清单
+
+以下按优先级排列，待分批填充到文档对应章节中。
+
+### 第一批：架构层
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D1 | 1.3 防护链（Defense Chain） | 9 层执行链路图，每层标注决策者（workflow/agent）、代码位置、数据来源、失效兜底关系 |
+| D2 | 新增 1.4 防护链统一接口 | ChainLink 协议 + DefenseChain 执行器 + ChainContext 数据对象，各层适配示例 |
+
+### 第二批：功能缺失
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D3 | 新增章节：测试基础设施 | 分层测试策略表 + FauxLLM 设计 + TestContainerBuilder + 覆盖率目标 |
+| D4 | 新增章节：Context Compaction | Compactor 协议 + 两种内置策略（summarize/prune）+ 集成到 AgentLoop |
+
+### 第三批：约束优化
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D5 | 防护链 → 新增 Constraint Escalation 小节 | block_type（soft/hard）+ 用户确认 bypass + 结构化错误反馈到 LLM + 三层规则表 |
+| D6 | 防护链 → 新增 9 层冗余表 | 每层可能漏放什么、被哪层兜底 |
+
+### 第四批：小优化
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D7 | 扩展点 → Tool DI | ToolContext[Generic[T]] 泛型改造，提升类型安全 |
+| D8 | Agent 类型系统 → 继承关系 | 强化 AgentDef.agent_type 如何继承类型默认工具集 |
+| D9 | 工具定义 → execution_mode | ToolDef 加 execution_mode: sequential/parallel 字段 |
+| D10 | AgentPlatformContainer → 预算参数 | max_steps、max_tool_calls 从第三波待接入提升为构造参数 |
