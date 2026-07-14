@@ -1075,8 +1075,9 @@ ConsentStore 持久化
 | # | 插入位置 | 内容 |
 |---|---|---|
 | D7 | 扩展点 → Tool DI | ToolContext[Generic[T]] 泛型改造，提升类型安全 |
-| D8 | Agent 类型系统 → 继承关系 | 强化 AgentDef.agent_type 如何继承类型默认工具集 |
-| D9 | 工具定义 → execution_mode | ToolDef 加 execution_mode: sequential/parallel 字段 |
+| D8 | Agent 类型系统 → 继承关系 | 强化 AgentDef.agent_type 如何继承类型默认工具集；与 12.7 统一模型联动 |
+| D9 | Agent 定义统一模型 → `AgentDefRegistry` 实现 | 12.7 中定义的 `AgentDefRegistry`、`reload_agents()`、`sync_to_file` 的完整代码实现 |
+| D10 | 工具定义 → execution_mode | ToolDef 加 execution_mode: sequential/parallel 字段 |
 | D10 | AgentPlatformContainer → 预算参数 | max_steps、max_tool_calls 从第三波待接入提升为构造参数 |
 
 ### 第五批：复杂场景扩展
@@ -1084,8 +1085,8 @@ ConsentStore 持久化
 | # | 插入位置 | 内容 |
 |---|---|---|
 | D11 | 新增章节：Replan 循环 | 在 AgentLoop 中增加 _should_replan() 判断（意外发现/工具失败/新方向/计划耗尽四种触发条件），以及 TaskDecomposer 将复杂任务分解为 3-5 个可并行子任务 |
-| D12 | 新增章节：AgentOrchestrator | 管理子 agent 完整生命周期的编排器，支持 spawn()（串行）和 spawn_parallel()（并行）；SubAgentDef 独立配置工具白名单/system prompt/budget；SubAgentResult 结构化返回协议（status/summary/artifacts/suggestions） |
-| D13 | 已有 DelegationTool → 扩展为多 agent 委派 | 现有 delegation_tools.py 中增加 DelegateTool，主 agent 通过普通工具调用即可委派子任务 |
+| D12 | 新增章节：AgentOrchestrator | 管理子 agent 完整生命周期的编排器，支持 spawn()（串行）和 spawn_parallel()（并行）；SubAgentDef 独立配置工具白名单/system prompt/budget；SubAgentResult 结构化返回协议（status/summary/artifacts/suggestions）；消费来自 12.6 的 SubAgentDef 注册表 |
+| D13 | 已有 DelegationTool → 扩展为多 agent 委派 | 现有 delegation_tools.py 中增加 DelegateTool，主 agent 通过普通工具调用即可委派子任务；委派目标来自 12.6 的 sub_agent_registry |
 | D14 | 新增章节：三层记忆架构 | FactMemory（结构化事实）、EpisodicMemory（向量检索对话历史）、EntityMemory（实体关系图）；MemoryCommitGate 升级为从对话中自动抽取三层次信息 |
 
 ### 第六批：现有架构强化
@@ -1093,7 +1094,7 @@ ConsentStore 持久化
 | # | 插入位置 | 内容 |
 |---|---|---|
 | D15 | 防护链 → StepExecutor 中增加 replan 触发点 | replan 检测点插入防护链的 post_exec 层 |
-| D16 | AgentType → 子 agent 继承规则 | 定义子 agent 默认继承父级的哪些配置（防护链/记忆/策略），哪些可以覆盖 |
+| D16 | AgentType → 子 agent 继承规则 | 定义子 agent 默认继承父级的哪些配置（防护链/记忆/策略），哪些可以覆盖；与 12.6.7 规则 3 联动 |
 
 ### 第七批：Agent 间通信与审批
 
@@ -1464,3 +1465,1573 @@ class CustomizationEngine:
 | File Instructions → ToolContext | ile_instructions 默认空列表，已有工具不受影响 |
 | Hooks → EventBus | EventBus 已有注册 API，新增适配器 |
 | MCP → ToolRegistry | McpAgentToolAdapter 实现 AgentTool 协议，对 ToolRegistry 透明 |
+
+### 12.6 原语 Agent → 子 Agent 映射方案
+
+原语系统的 `.agent.md` 通过 `AgentDefManager` 加载后，当前只用于主 Agent 身份选择（12.2）。多 Agent 协作场景（案例二/三）要求 `AgentOrchestrator` 能按名称 spawn 子 Agent，但 `SubAgentDef` 的注册来源是代码而非文件系统。本节定义两者之间的映射桥接。
+
+#### 12.6.1 映射规则
+
+```
+.agent.md 文件
+  │  AgentDefManager 加载
+  ▼
+AgentDefinition                    SubAgentDef
+─────────────────                  ──────────────────
+instructions           ────────→   system_prompt
+allowed_tools          ────────→   allowed_tools
+model                  ────────→   model（可选覆盖）
+max_turns              ────────→   max_steps
+(frontmatter 扩展字段)  ────────→   max_tool_calls
+(frontmatter 扩展字段)  ────────→   role
+```
+
+**默认值规则**：映射时缺失的字段使用以下默认值填充：
+
+| SubAgentDef 字段 | 映射来源 | 默认值 |
+|---|---|---|
+| `system_prompt` | `AgentDef.instructions`（agent.md body） | `""` |
+| `allowed_tools` | `AgentDef.allowed_tools` | agent_type 默认工具集 |
+| `model` | `AgentDef.model` | 空（使用主 agent 或全局 LLM 配置） |
+| `max_steps` | `AgentDef.max_turns` | 25 |
+| `max_tool_calls` | frontmatter 扩展字段 `max_tool_calls` | `max_steps * 2` |
+| `role` | frontmatter 扩展字段 `role` | `agent_name` |
+
+#### 12.6.2 `.agent.md` Frontmatter 扩展
+
+为支持子 Agent 执行，`.agent.md` 的 frontmatter 增加以下可选字段：
+
+```yaml
+---
+name: code-reviewer
+agent_type: coding
+model: gpt-4o-mini        # 子 Agent 可用更经济的模型
+allowed_tools: [read_file, search_code, grep, run_test]
+max_turns: 15             # → 映射为 max_steps
+max_tool_calls: 30        # 新增：工具调用上限
+role: 代码审查员            # 新增：子 Agent 角色描述，用于 AgentOrchestrator 决策
+subagent_only: true       # 新增：标记此 agent 只作为子 Agent 使用，不作为对话入口
+---
+```
+
+**字段说明**：
+
+| 字段 | 必填 | 用途 |
+|---|---|---|
+| `max_tool_calls` | 否 | 子 Agent 单次执行中工具调用次数上限。不填时默认 `max_turns * 2`。主 Agent 忽略此字段。 |
+| `role` | 否 | 子 Agent 的角色描述。用于 `TaskDecomposer` 分解任务时选择合适的子 Agent。主 Agent 忽略。 |
+| `subagent_only` | 否 | 标记此 Agent 定义仅作为子 Agent 使用，不出现在 `list_agents()` 和 `_resolve_agent()` 的入口选择中。默认 `false`。 |
+
+#### 12.6.3 AgentDefSubAgentAdapter
+
+```python
+# agent_platform/primitives/subagent_adapter.py
+
+@dataclass
+class SubAgentDef:
+    """子 Agent 运行时定义。与 AgentDefinition 分离，独立演进。"""
+    name: str
+    system_prompt: str = ""
+    allowed_tools: list[str] = field(default_factory=list)
+    model: str = ""
+    max_steps: int = 25
+    max_tool_calls: int = 50
+    role: str = ""
+    agent_def_id: str = ""  # 关联的原 AgentDef ID，用于审计和追溯
+
+
+class AgentDefSubAgentAdapter:
+    """将 AgentDefinition 适配为 SubAgentDef。
+
+    不修改 AgentDefinition 本身。不产生副作用。非破坏性适配。
+    """
+
+    @staticmethod
+    def to_sub_agent_def(
+        agent_def: AgentDefinition,
+        default_tools: list[str] | None = None,
+    ) -> SubAgentDef:
+        name = agent_def.name
+        frontmatter = agent_def.frontmatter or {}
+
+        return SubAgentDef(
+            name=name,
+            system_prompt=agent_def.instructions or "",
+            allowed_tools=agent_def.allowed_tools or default_tools or [],
+            model=agent_def.model or "",
+            max_steps=agent_def.max_turns or 25,
+            max_tool_calls=frontmatter.get("max_tool_calls", (agent_def.max_turns or 25) * 2),
+            role=frontmatter.get("role", name),
+            agent_def_id=agent_def.agent_id or name,
+        )
+```
+
+#### 12.6.4 接线：CustomizationEngine 扩展
+
+在 `CustomizationEngine._sync_agents()` 中增加子 Agent 注册逻辑：
+
+```python
+class CustomizationEngine:
+    def __init__(self):
+        self._agent_def_manager: AgentDefManager
+        self._sub_agent_registry: dict[str, SubAgentDef] = {}  # 新增
+
+    def _sync_agents(self):
+        """同步 Agent 定义。同时注册主 Agent 和子 Agent。"""
+        # 原逻辑：加载到 AgentDefManager
+        self._agent_def_manager.sync(self._agents_dir)
+
+        # 新增：将标记了 subagent_only 或显式引用的 AgentDef 适配为 SubAgentDef
+        for agent_def in self._agent_def_manager.list_agent_defs():
+            frontmatter = agent_def.frontmatter or {}
+            is_subagent = frontmatter.get("subagent_only", False)
+            if is_subagent or _is_referenced_as_subagent(agent_def.name):
+                adapter = AgentDefSubAgentAdapter()
+                sub_def = adapter.to_sub_agent_def(
+                    agent_def,
+                    default_tools=self._get_type_default_tools(agent_def.agent_type),
+                )
+                self._sub_agent_registry[sub_def.name] = sub_def
+
+    def get_sub_agent(self, name: str) -> SubAgentDef | None:
+        return self._sub_agent_registry.get(name)
+
+    def list_sub_agents(self) -> list[SubAgentDef]:
+        return list(self._sub_agent_registry.values())
+
+
+def _is_referenced_as_subagent(name: str) -> bool:
+    """判断此 Agent 名称是否被某个主 Agent 的 sub_agents 列表引用。
+    
+    启发式实现：若代理定义的 `.agent.md` 中 frontmatter 包含 `sub_agents: [name]`，
+    或 `create_agent({sub_agents: [name]})` 注册过，则返回 True。
+    精确匹配取决于运行时注册表，此处略。
+    """
+    ...
+```
+
+#### 12.6.5 AgentOrchestrator 消费 SubAgentDef
+
+`AgentOrchestrator` 通过名称从 `CustomizationEngine` 或 `AgentPlatformContainer` 获取 `SubAgentDef`，然后 spawn：
+
+```python
+class AgentOrchestrator:
+    def __init__(self, container: AgentPlatformContainer):
+        self._container = container
+
+    async def spawn(self, name: str, task: str, ctx: dict | None = None):
+        sub_def = self._container.customization_engine.get_sub_agent(name)
+        if not sub_def:
+            raise ValueError(f"未知的子 Agent: {name}")
+
+        # 使用 sub_def 中的独立配置创建子 AgentLoop
+        llm = self._container.llm_manager.get(sub_def.model) if sub_def.model else self._container.llm
+        agent_loop = AgentLoop(
+            llm=llm,
+            tool_registry=self._container.tool_registry,
+            allowed_tools=sub_def.allowed_tools,
+            system_prompt=sub_def.system_prompt,
+            budget=AgentBudget(
+                max_steps=sub_def.max_steps,
+                max_tool_calls=sub_def.max_tool_calls,
+            ),
+            hooks=_inherit_hooks(self._container.tool_hooks),
+        )
+
+        result = await agent_loop.run(task)
+        return SubAgentResult(
+            agent_name=sub_def.name,
+            status="completed" if result.success else "failed",
+            summary=result.summary,
+            artifacts=result.artifacts or [],
+            agent_def_id=sub_def.agent_def_id,  # 关联回原 AgentDef
+        )
+
+    async def spawn_parallel(self, sub_tasks: list[tuple[str, str]]):
+        """并行 spawn 多个子 Agent。"""
+        tasks = [self.spawn(name, task) for name, task in sub_tasks]
+        return await asyncio.gather(*tasks)
+```
+
+#### 12.6.6 完整的原语 Agent → 子 Agent 执行链路
+
+```
+.lania/agents/
+  ├── reviewer.agent.md     ← 原语文件
+  ├── fixer.agent.md
+  └── coding.agent.md
+        │
+        │  CustomizationEngine._sync_agents()
+        ▼
+  AgentDefManager                 CustomizationEngine._sub_agent_registry
+  ├─ coding        (主 Agent)     ├─ reviewer → SubAgentDef
+  └─ reviewer      (入口不可见)   └─ fixer    → SubAgentDef
+                                  (subagent_only: true 时从入口隐藏)
+
+用户请求
+  │
+  ├─ IntentRecognizer → 主 Agent ("coding")
+  │     AgentLoop 收到 task
+  │     │
+  │     ├─ TaskDecomposer 分解 → [{name: "reviewer", task: "审查SQL"}, {name: "fixer", task: "修复SQL"}]
+  │     │
+  │     ├─ AgentOrchestrator.spawn_parallel([
+  │     │     ("reviewer", "审查SQL"),
+  │     │     ("fixer", "修复SQL"),
+  │     │   ])
+  │     │     │
+  │     │     ├─ get_sub_agent("reviewer") → SubAgentDef(system_prompt=..., allowed_tools=...)
+  │     │     ├─ AgentLoop.run(task, budget=SubAgentDef.budget)
+  │     │     │     ├─ ToolHook(继承主 Agent 的钩子)
+  │     │     │     ├─ PolicyEngine(sub_agent 自己的 allowed_tools)
+  │     │     │     └─ 返回 SubAgentResult
+  │     │     │
+  │     │     └─ get_sub_agent("fixer") → 同上
+  │     │
+  │     └─ 主 Agent 汇总 SubAgentResult → 输出给用户
+```
+
+#### 12.6.7 规则与约束
+
+| # | 规则 | 说明 |
+|---|---|---|
+| 1 | **非破坏性适配** | `AgentDefSubAgentAdapter` 不修改 `AgentDefinition`，是纯函数转换。`.agent.md` 文件中的原语 Agent 定义不受影响。 |
+| 2 | **双向注册** | 同一个 `.agent.md` 文件可以同时作为主 Agent（对话入口）和子 Agent（委派目标），由 `subagent_only` 控制是否隐藏入口。 |
+| 3 | **继承与覆盖** | 子 Agent 默认继承主 Agent 的 ToolHook 和防护链策略。`allowed_tools`、`model`、`budget` 可以独立配置。安全策略（PolicyEngine）**强制继承**，子 Agent 不能绕过父级的全局策略。 |
+| 4 | **预算独立** | 每个子 Agent 有独立的 `max_steps`/`max_tool_calls`。子 Agent 不消费主 Agent 的预算，但受全局 `BudgetPool`（D23）约束。 |
+| 5 | **审计追溯** | `SubAgentDef.agent_def_id` 保存原始 `AgentDef` 的 ID，审计日志中可追溯到 `.agent.md` 文件。 |
+| 6 | **未标记则不可 spawn** | 只有被 `subagent_only` 标记或显式被主 Agent 的 `sub_agents` 列表引用的 AgentDef 才会注册到 `_sub_agent_registry`。未标记的 AgentDef 调用 `spawn()` 会抛出 `ValueError`。 |
+
+#### 12.6.8 接线合规性
+
+| 接线 | 不破坏的原因 |
+|---|---|
+| AgentDef → SubAgentDef | `AgentDefSubAgentAdapter` 是纯函数适配器，不修改 `AgentDefManager`、`AgentDefinition` 或已有注册流程 |
+| CustomizationEngine → sub_agent_registry | `_sub_agent_registry` 是新增字段，不改变 `_sync_agents()` 中已有逻辑对 `AgentDefManager` 的调用路径 |
+| AgentOrchestrator → CustomizationEngine | 通过 `get_sub_agent()` 只读查询，不注入额外依赖到已有类 |
+| 子 Agent → ToolHook | 继承主 Agent 的 `tool_hooks` 列表，共享同一个 `EventBus` 注册实例 |
+
+### 12.7 Agent 定义统一模型：文件式与 API 式的统一
+
+文件式（`.agent.md` → `AgentDefManager`）和 API 式（`create_agent()` → `SQLiteStateStore`）是两套独立的 Agent 定义途径，各有不同的存储后端和生命周期。本节定义它们之间的统一模型、合并策略和同步规则。
+
+#### 12.7.1 统一模型：`AgentDefinition`
+
+```python
+# agent_platform/models/agent_definition.py
+
+@dataclass
+class AgentDefinition:
+    """Agent 定义的统一模型。文件式和 API 式共享此结构。"""
+    # ── 标识 ──
+    name: str                                          # 唯一标识符。文件名 (不含 .agent.md) 或 API 传入
+    agent_id: str = ""                                 # 持久化 ID。为空时自动由 name 生成
+
+    # ── 运行时配置 ──
+    agent_type: str = "chat"                           # agent 类型，决定默认工具集和行为模板
+    model: str = ""                                    # 模型名。为空时使用全局 LLM 配置
+    instructions: str = ""                             # 系统提示词。文件式中来自 body，API 式中来自 payload
+
+    # ── 权限与安全 ──
+    allowed_tools: list[str] = field(default_factory=list)   # 工具白名单。为空时使用 agent_type 默认集
+    disallowed_tools: list[str] = field(default_factory=list) # 显式禁止的工具（黑名单，优先级高于白名单）
+    risk_level_overrides: dict[str, str] = field(default_factory=dict)  # 工具风险等级覆盖
+
+    # ── 预算控制 ──
+    max_turns: int = 50                                # 最大 ReAct 轮次
+    max_tool_calls: int = 100                          # 最大工具调用次数
+    max_cost: float = 0.0                              # 最大成本（美元）。0 表示不限制
+
+    # ── 子 Agent ──
+    sub_agents: list[str] = field(default_factory=list)  # 引用的子 Agent 名称列表
+
+    # ── 原标记 ──
+    subagent_only: bool = False                        # 仅作为子 Agent，不出现于入口选择
+    hooks: list[str] = field(default_factory=list)     # 生效的钩子名称列表
+
+    # ── 元数据 ──
+    source: Literal["file", "api"] = "file"            # 定义来源
+    frontmatter: dict[str, Any] = field(default_factory=dict)  # 原始 frontmatter 扩展字段（仅文件式）
+    created_at: str = ""                               # 创建时间
+    updated_at: str = ""                               # 最后修改时间
+
+
+# API 式 payload 的字段映射（与 AgentDefinition 保持一致）
+AGENT_PAYLOAD_FIELDS = {
+    "name", "agent_type", "model", "instructions",
+    "allowed_tools", "disallowed_tools", "risk_level_overrides",
+    "max_turns", "max_tool_calls", "max_cost",
+    "sub_agents", "subagent_only", "hooks",
+}
+```
+
+**关键设计**：
+- 文件式和 API 式使用**同一个数据模型**，不存在两套 schema
+- `source` 字段标记来源，用于调试和审计，不参与业务逻辑
+- `frontmatter` 仅文件式有值，API 式始终为空 dict，保证向前兼容
+- `agent_id` 自动生成规则：文件式 = `{agents_dir_relative_path}/{name}`，API 式 = `api:{name}`，避免命名冲突
+
+#### 12.7.2 双源架构
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    AgentPlatformContainer                         │
+│                                                                  │
+│    list_agents() ────▶  AgentDefRegistry  ◀──── get_agent()     │
+│                              │                                   │
+│                    ┌─────────┴──────────┐                       │
+│                    ▼                     ▼                       │
+│           AgentDefManager        SQLiteStateStore                │
+│           (文件系统来源)           (API 来源)                     │
+│                    │                     │                       │
+│                    │  启动时加载          │  create_agent() 写入   │
+│                    ▼                     │  update_agent() 写入   │
+│           .lania/agents/                 │  delete_agent() 删除   │
+│           *.agent.md                     │                       │
+│                                          ▼                       │
+│                                    app.sqlite3                   │
+│                                    agent_defs 表                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**`AgentDefRegistry`** — 新增聚合器，负责合并双源：
+
+```python
+# agent_platform/primitives/agent_def_registry.py
+
+class AgentDefRegistry:
+    """Agent 定义聚合器。合并文件来源和 API 来源，按优先级返回。"""
+
+    def __init__(
+        self,
+        file_manager: AgentDefManager,
+        store: StateStore,
+    ):
+        self._file_manager = file_manager    # 文件来源
+        self._store = store                  # API 来源（SQLite）
+
+    def list_all(self) -> list[AgentDefinition]:
+        """合并两份来源，API 覆盖同名文件 Agent。"""
+        file_agents = {a.name: a for a in self._file_manager.list_agent_defs()}
+        api_agents = self._load_api_agents()
+
+        # 合并：API 覆盖文件（见 12.7.5）
+        merged: dict[str, AgentDefinition] = {}
+        for name, agent in file_agents.items():
+            merged[name] = agent
+        for name, agent in api_agents.items():
+            if name in merged:
+                agent.source = "api"          # 标记覆盖
+            merged[name] = agent
+
+        # 过滤 subagent_only
+        return [a for a in merged.values() if not a.subagent_only]
+
+    def get(self, name: str) -> AgentDefinition | None:
+        """按名称获取。API 优先，文件兜底。"""
+        api = self._load_api_agent(name)
+        if api:
+            return api
+        return self._file_manager.get_by_name(name)
+
+    def _load_api_agents(self) -> dict[str, AgentDefinition]:
+        raw_list = self._store.list_agent_defs() or []
+        return {
+            d["name"]: AgentDefinition(**d, source="api")
+            for d in raw_list
+            if d.get("source", "api") == "api"  # 防止循环
+        }
+
+    def _load_api_agent(self, name: str) -> AgentDefinition | None:
+        raw = self._store.get_agent_def(name)
+        if raw:
+            return AgentDefinition(**raw, source="api")
+        return None
+```
+
+#### 12.7.3 合并策略
+
+`list_agents()` 和 `get_agent()` 的优先级规则：
+
+```
+get_agent("reviewer")         list_agents()
+         │                           │
+         ▼                           ▼
+   ① 查 SQLite (API)         ① 加载全部文件 Agent
+   ② 有 → 返回               ② 加载全部 API Agent
+   ③ 无 → 查 AgentDefManager ③ API 覆盖同名文件 Agent
+         (文件)               ④ 过滤 subagent_only
+   ④ 有 → 返回               ⑤ 返回合并列表
+   ⑤ 无 → 返回 None
+```
+
+**具体规则**：
+
+| 场景 | 行为 |
+|---|---|
+| Agent 仅存在于文件 | 正常返回 |
+| Agent 仅存在于 API | 正常返回 |
+| Agent 同时存在于文件 + API | **API 覆盖**。`get_agent()` 返回 API 版本，`list_agents()` 中 API 版本替换文件版本 |
+| API 版本被 `delete_agent()` 删除 | 文件版本重新可见（回退效果） |
+
+#### 12.7.4 数据流方向
+
+```
+             文件系统 (.agent.md)
+                  │
+                  │ ① 启动时一次性加载
+                  ▼
+           AgentDefManager ──▶ AgentDefRegistry
+                                    │
+          ┌─────────────────────────┤
+          │                         │
+          ▼                         ▼
+   SQLiteStateStore            API 方法调用
+   (持久化层)                   (create/update/delete)
+          ▲
+          │ ② 所有写入走 API
+          │
+   container.create_agent(payload)
+   container.update_agent(id, payload)
+   container.delete_agent(id)
+```
+
+**写入路径规则**：
+
+| 操作 | 写入目标 | 写回文件？ |
+|---|---|---|
+| `create_agent()` | SQLiteStateStore | ❌ 不写回。除非 `sync_to_file=True` 参数传入 |
+| `update_agent()` | SQLiteStateStore | ❌ 不写回。文件式 Agent 通过修改 `.agent.md` + 重启生效 |
+| `delete_agent()` | SQLiteStateStore 删除该记录 | ❌ 不影响文件。文件版本在重启后重新可见 |
+| `sync_to_file=True` | 将 AgentDefinition 渲染为 `.agent.md` 写入 `agents_dir` | ✅ 显式请求时写回 |
+
+**规则说明**：
+
+1. **文件是单向输入源**：启动时加载，运行时不改写。避免 API 调用意外污染用户手写的 `.agent.md`
+2. **API 是运行时操作入口**：所有写入走 `create_agent/update_agent/delete_agent`，持久化到 SQLite
+3. **显式写回**：`create_agent(payload, sync_to_file=True)` 将 Agent 渲染为 `.agent.md` 写入文件系统，供版本管理
+
+```python
+class AgentPlatformContainer:
+    def create_agent(
+        self,
+        payload: dict,
+        sync_to_file: bool = False,
+    ) -> AgentDefinition:
+        # 1. 校验 payload 字段（见 12.7.6）
+        validated = self._validate_agent_payload(payload)
+
+        # 2. 写入 SQLite
+        record = {
+            **validated,
+            "source": "api",
+            "agent_id": f"api:{validated['name']}",
+            "created_at": now(),
+            "updated_at": now(),
+        }
+        self.store.upsert_agent_def(record)
+
+        # 3. 可选写回文件
+        if sync_to_file and self._agents_dir:
+            self._write_agent_to_file(record)
+
+        # 4. 通知注册表刷新缓存
+        self._agent_registry.invalidate(validated["name"])
+
+        return AgentDefinition(**record)
+
+    def _write_agent_to_file(self, record: dict) -> Path:
+        """将 Agent 定义渲染为 .agent.md 文件。"""
+        frontmatter = {k: v for k, v in record.items()
+                       if k not in ("instructions", "source", "agent_id",
+                                    "created_at", "updated_at", "frontmatter")
+                       and v is not None and v != "" and v != []}
+        body = record.get("instructions", "")
+        content = f"---\n{yaml.dump(frontmatter, allow_unicode=True)}---\n\n{body}"
+        filepath = self._agents_dir / f"{record['name']}.agent.md"
+        filepath.write_text(content, encoding="utf-8")
+        return filepath
+```
+
+#### 12.7.5 冲突规则
+
+定义同名 Agent 冲突时的 4 种情况：
+
+```
+文件 reviewer.agent.md          API create_agent({name: "reviewer", ...})
+         │                                   │
+         ▼                                   ▼
+  AgentDefinition(name="reviewer")    AgentDefinition(name="reviewer")
+  source="file"                       source="api"
+```
+
+| # | 场景 | 行为 | 结果 |
+|---|---|---|---|
+| **C1** | 文件独占 | 正常加载 | 运行时完全使用文件定义 |
+| **C2** | API 独占 | 正常加载 | 运行时完全使用 API 定义 |
+| **C3** | 文件 + API 同名 | **API 覆盖文件**（见 12.7.3） | 运行时使用 API 版本，文件版本在 `delete_agent()` 后重新可见 |
+| **C4** | API 创建后 sync_to_file | 写回 `.agent.md` | 文件版本 = API 版本，source 仍为 `"api"` |
+
+**删除语义**：
+
+```python
+def delete_agent(self, agent_id: str) -> None:
+    """删除 API 定义的 Agent。不影响文件定义的 Agent。"""
+    agent = self.get_agent(agent_id)
+    if agent is None:
+        raise NotFound(f"Agent '{agent_id}' 不存在")
+    if agent.source == "file":
+        # 文件定义的 Agent 不能被 API 删除。如需删除，直接删除 .agent.md 文件
+        raise BadRequest(
+            f"Agent '{agent_id}' 来自文件系统，无法通过 API 删除。"
+            f"请删除 {self._agents_dir / agent_id}.agent.md 文件并重启。"
+        )
+    self.store.delete_agent_def(agent_id)
+    self._agent_registry.invalidate(agent_id)
+```
+
+#### 12.7.6 API Payload Schema
+
+```python
+# agent_platform/api/schemas.py
+
+CREATE_AGENT_SCHEMA = {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+        "name":         {"type": "string", "minLength": 1, "maxLength": 128},
+        "agent_type":   {"type": "string", "default": "chat"},
+        "model":        {"type": "string", "default": ""},
+        "instructions": {"type": "string", "default": ""},
+
+        "allowed_tools":   {"type": "array", "items": {"type": "string"}, "default": []},
+        "disallowed_tools":{"type": "array", "items": {"type": "string"}, "default": []},
+        "risk_level_overrides": {"type": "object", "default": {}},
+
+        "max_turns":     {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+        "max_tool_calls":{"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+        "max_cost":      {"type": "number", "minimum": 0, "default": 0},
+
+        "sub_agents":    {"type": "array", "items": {"type": "string"}, "default": []},
+        "subagent_only": {"type": "boolean", "default": False},
+        "hooks":         {"type": "array", "items": {"type": "string"}, "default": []},
+    },
+}
+
+UPDATE_AGENT_SCHEMA = {
+    "type": "object",
+    "required": [],  # 所有字段可选，仅更新传入的字段
+    "properties": CREATE_AGENT_SCHEMA["properties"],  # 复用相同字段定义
+}
+
+# ── 字段校验规则 ──
+def validate_agent_payload(payload: dict, for_update: bool = False) -> dict:
+    """校验 agent payload。for_update=True 时所有字段可选。"""
+    schema = UPDATE_AGENT_SCHEMA if for_update else CREATE_AGENT_SCHEMA
+    # 使用 jsonschema 或类似校验器
+    jsonschema.validate(payload, schema)
+
+    # 额外业务校验
+    if not for_update:
+        assert payload["name"], "name 不能为空"
+    if "allowed_tools" in payload and "disallowed_tools" in payload:
+        overlap = set(payload["allowed_tools"]) & set(payload["disallowed_tools"])
+        assert not overlap, f"工具同时出现在白名单和黑名单: {overlap}"
+    return payload
+```
+
+**`create_agent` 与 `update_agent` 的区别**：
+
+| 操作 | 语义 | 缺失字段处理 |
+|---|---|---|
+| `create_agent(payload)` | 全量创建 | 使用 schema 中的 `default` 值填充 |
+| `update_agent(id, payload)` | 部分更新（merge） | 保留原有值，只覆盖 payload 中传入的字段 |
+
+```python
+def update_agent(self, agent_id: str, payload: dict) -> AgentDefinition:
+    """部分更新 Agent 定义。仅覆盖传入字段，保留其他字段。"""
+    existing = self.get_agent(agent_id)
+    if existing is None:
+        raise NotFound(f"Agent '{agent_id}' 不存在")
+    if existing.source == "file":
+        # 文件式 Agent 不支持部分更新。如需修改，改写 .agent.md 文本内容后重启
+        raise BadRequest(
+            f"Agent '{agent_id}' 来自文件系统，不支持通过 API 部分更新。"
+            f"请在 {self._agents_dir / agent_id}.agent.md 中直接修改。"
+        )
+
+    validated = validate_agent_payload(payload, for_update=True)
+    merged = {**existing.to_dict(), **validated, "updated_at": now()}
+    self.store.upsert_agent_def(merged)
+    self._agent_registry.invalidate(agent_id)
+    return AgentDefinition(**merged)
+```
+
+#### 12.7.7 热加载策略
+
+| 场景 | 行为 | 原因 |
+|---|---|---|
+| **运行时修改 `.agent.md`** | ❌ 不自动重载。需重启应用或调用 `container.reload_agents()` | 避免运行时并发修改导致 AgentDefRegistry 状态不一致 |
+| **运行时新增 `.agent.md`** | ❌ 同上 | 同上 |
+| **运行时删除 `.agent.md`** | ❌ 同上。API 创建的 Agent 不受影响 | 同上 |
+| **`container.reload_agents()`** | ✅ 重新扫描 `agents_dir`，重建 AgentDefManager，刷新 AgentDefRegistry | 显式触发的全量重载，调用方自行确保无正在执行的对话 |
+| **API create/update/delete** | ✅ 即时生效（写入 SQLite + 刷新注册表缓存） | API 是运行时操作入口，理应即时生效 |
+
+```python
+class AgentPlatformContainer:
+    def reload_agents(self) -> int:
+        """重新从文件系统加载 Agent 定义。调用方需确保无正在执行的对话。"""
+        self.customization_engine._sync_agents()
+        self._agent_registry = AgentDefRegistry(
+            file_manager=self.customization_engine._agent_def_manager,
+            store=self.store,
+        )
+        count = len(self._agent_registry.list_all())
+        logger.info(f"已重载 {count} 个 Agent 定义（含子 Agent）")
+        return count
+```
+
+#### 12.7.8 完整的数据流图
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          应用启动                                          │
+│                                                                          │
+│  CustomizationEngine.initialize()                                        │
+│    ├─ _sync_agents()                                                     │
+│    │    ├─ 扫描 .lania/agents/*.agent.md                                 │
+│    │    ├─ AgentDefManager 加载到内存                                     │
+│    │    └─ 适配子 Agent → _sub_agent_registry                             │
+│    └─ 其他原语同步                                                        │
+│                                                                          │
+│  AgentDefRegistry(file=AgentDefManager, store=SQLiteStateStore)          │
+│    ├─ 从 AgentDefManager 读文件 Agent                                     │
+│    └─ 从 SQLiteStateStore 读 API Agent（启动时为空）                       │
+│         │                                                                │
+│         ▼                                                                │
+│  注册表就绪 → list_agents() / get_agent() 可用                            │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          运行时操作                                        │
+│                                                                          │
+│  API 操作                         文件系统操作                             │
+│  ──────────                       ──────────                             │
+│  create_agent() ───▶ SQLite       ❌ 运行时修改 .agent.md 不生效           │
+│  update_agent() ───▶ SQLite       ✅ 需调用 reload_agents() 生效          │
+│  delete_agent() ───▶ SQLite                                                │
+│       │                                                                  │
+│       └── 刷新 AgentDefRegistry 缓存                                      │
+│                                                                          │
+│  reload_agents() ───▶ 重新扫描文件 + 重建 AgentDefRegistry                │
+│                                                                          │
+│  get_agent("x")                                                          │
+│    ├─ ① API 有 → 返回（API 优先）                                         │
+│    └─ ② 文件有 → 返回                                                     │
+│                                                                          │
+│  list_agents()                                                           │
+│    ├─ ① 合并文件 + API                                                   │
+│    ├─ ② API 覆盖同名文件                                                  │
+│    └─ ③ 过滤 subagent_only                                               │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 12.7.9 接线合规性
+
+| 接线 | 不破坏的原因 |
+|---|---|
+| `AgentDefinition` 统一模型 | 现有代码中的 `AgentDefinition` 使用模式与新增字段兼容，新增字段均有默认值 |
+| `AgentDefRegistry` 聚合器 | 新增类，不修改 `AgentDefManager` 或 `SQLiteStateStore` 已有逻辑 |
+| `create_agent()` → SQLite | 原有设计即为写入 SQLite，未改变语义；新增可选 `sync_to_file` 参数，默认 False |
+| `list_agents()` 合并来源 | 原 `list_agents()` 无实现说明，新增聚合器填补空白 |
+| 热加载 `reload_agents()` | 显式调用，不干扰正在执行的对话；文件系统变更不自动生效，避免并发问题 |
+
+---
+
+## 十三、平台总体架构图
+
+> 以下为 Agent 平台包所有功能点的完整架构图。先按模块拆解内部链路，最后以总图串联。
+
+---
+
+### 13.1 整体分层
+
+```mermaid
+graph TB
+    subgraph Application["应用层 (Application)"]
+        direction LR
+        A1["HTTP/SSE 端点<br/>main.py"]
+        A2[".lania/agents/<br/>Agent 定义文件"]
+        A3["tools/<br/>自定义工具"]
+        A4["frontend/<br/>UI"]
+    end
+
+    subgraph Platform["平台层 (agent-platform pip 包)"]
+        direction TB
+        P1["AgentPlatformContainer<br/>唯一入口"]
+        P2["agents/brain/<br/>执行引擎"]
+        P3["services/<br/>平台服务"]
+        P4["harness/<br/>安全/策略/钩子"]
+        P5["capabilities/<br/>工具能力注册"]
+        P6["models/<br/>数据模型"]
+        P7["core/<br/>配置/认证/日志"]
+        P8["observability/<br/>可观测"]
+    end
+
+    subgraph External["外部依赖"]
+        E1["LLM 供应商<br/>(OpenAI / Anthropic / ...)"]
+        E2["SQLite / Postgres / Redis<br/>持久化存储"]
+        E3["MCP 服务器<br/>(外部工具)"]
+    end
+
+    Application -->|"from agent_platform import<br/>AgentPlatformContainer"| P1
+    P1 --> P2
+    P1 --> P3
+    P1 --> P4
+    P1 --> P5
+    P1 --> P6
+    P1 --> P7
+    P1 --> P8
+    P2 -->|"LLM chat/chat_stream"| E1
+    P3 -->|"StateStore 协议"| E2
+    P5 -->|"MCP 工具代理"| E3
+```
+
+---
+
+### 13.2 扩展点层（Plugin Protocols）
+
+```mermaid
+graph TB
+    subgraph Protocols["AgentPlatformContainer 扩展点 (4 个)"]
+        L["LLM Protocol<br/>chat() / chat_stream()"]
+        S["StateStore Protocol<br/>31 个方法 / 12 类"]
+        H["ToolHook Protocol<br/>on_event() → HookDecision"]
+        T["TraceExporter Protocol<br/>export(AgentTrace)"]
+    end
+
+    subgraph Builtin["内置默认实现"]
+        L1["OpenAILLM<br/>(只依赖 httpx)"]
+        S1["SQLiteStateStore<br/>(文件持久化)"]
+        H1["FileHookRunner<br/>(加载 .lania/hooks/*.yaml)"]
+        T1["ConsoleExporter<br/>(打印到控制台)"]
+    end
+
+    subgraph Custom["用户自定义实现"]
+        L2["AnthropicLLM / GeminiLLM / ..."]
+        S2["PostgresStateStore / RedisStore / ..."]
+        H2["AuditLogger / RateLimiter / ..."]
+        T2["PrometheusExporter / OTelExporter / ..."]
+    end
+
+    L -.->|"用户注入"| L1
+    L -.->|"用户注入"| L2
+    S -.->|"用户注入"| S1
+    S -.->|"用户注入"| S2
+    H -.->|"register_tool_hook()"| H1
+    H -.->|"register_tool_hook()"| H2
+    T -.->|"register_trace_exporter()"| T1
+    T -.->|"register_trace_exporter()"| T2
+```
+
+---
+
+### 13.3 原语系统（CustomizationEngine）
+
+```mermaid
+graph TB
+    subgraph Files["文件系统 .lania/"]
+        AG["AGENTS.md<br/>项目级指令"]
+        AD["agents/*.agent.md<br/>Agent 定义"]
+        SK["skills/*/SKILL.md<br/>技能定义"]
+        FI["instructions/*.instructions.md<br/>文件级指令"]
+        PR["prompts/*.prompt.md<br/>提示词模板"]
+        HK["hooks/*.json<br/>工具钩子配置"]
+        MC["mcp-servers.json<br/>MCP 服务器配置"]
+    end
+
+    subgraph CE["CustomizationEngine.initialize()"]
+        S1["_sync_agents()"]
+        S2["_sync_skills()"]
+        S3["_sync_prompts()"]
+        S4["_sync_mcp_servers()"]
+        S5["_sync_hooks()"]
+        S6["_sync_file_instructions()"]
+    end
+
+    subgraph Managers["Manager 层"]
+        IM["InstructionsManager<br/>拼接 System Prompt"]
+        ADM["AgentDefManager<br/>Agent 身份/白名单/预算"]
+        SM["SkillManager<br/>扩展清单 + 规则"]
+        FIM["FileInstructionManager<br/>按 glob 匹配文件"]
+        PM["PromptManager<br/>/命令渲染"]
+        HL["HookLoader +<br/>HookRuntimeAdapter"]
+        MM["McpManager<br/>MCP 连接管理"]
+    end
+
+    subgraph Output["输出到防护链"]
+        O1["① System Prompt"]
+        O2["② Agent 身份选择"]
+        O3["⑦ 工具白名单"]
+        O4["⑧ ToolRegistry 工具"]
+        O5["⑥ EventBus 事件"]
+        O6["⑤ File Instruction"]
+        O7["⑨ AgentBudget 预算"]
+    end
+
+    AG --> S1 --> IM --> O1
+    AD --> S1 --> ADM --> O2
+    AD --> S1 --> ADM --> O3
+    AD --> S1 --> ADM --> O7
+    SK --> S2 --> SM --> O1
+    FI --> S6 --> FIM --> O6
+    PR --> S3 --> PM
+    MC --> S4 --> MM -->|"McpAgentToolAdapter"| O4
+    HK --> S5 --> HL --> O5
+```
+
+---
+
+### 13.4 存储层
+
+```mermaid
+graph TB
+    subgraph Store["存储层"]
+        direction TB
+        IMS["InMemoryState<br/>运行时热缓存"]
+        SSS["SQLiteStateStore<br/>持久化存储"]
+
+        subgraph IMS_Fields["InMemoryState 字段"]
+            I1["tasks: dict"]
+            I2["task_runs: dict"]
+            I3["artifacts: dict"]
+            I4["sessions: dict"]
+            I5["collections: dict"]
+            I6["query_runs: dict"]
+        end
+
+        subgraph SSS_Methods["SQLiteStateStore 方法 (31 个)"]
+            M1["生命周期: __init__ / load_into / ping"]
+            M2["Task: get / upsert / list / claim / touch"]
+            M3["Session: get / upsert / delete"]
+            M4["UserProfile: get / upsert"]
+            M5["AgentDef: get / upsert / list / delete"]
+            M6["Skill: get / upsert / list / delete / rules"]
+            M7["Prompt: get / upsert / list / delete"]
+            M8["MCP: get / upsert / list / delete"]
+            M9["Consent: get / save"]
+            M10["PolicyProfile: list"]
+        end
+    end
+
+    Startup["应用启动"] -->|"store.load_into(state)"| IMS
+    Runtime["运行时读写"] -->|"container.state.X"| IMS
+    IMS -->|"写入持久化"| SSS
+    SSS -->|"启动恢复"| IMS
+```
+
+---
+
+### 13.5 Agent 定义架构（双源统一）
+
+```mermaid
+graph TB
+    subgraph FileSource["文件来源"]
+        F1[".lania/agents/<br/>reviewer.agent.md"]
+        F2[".lania/agents/<br/>fixer.agent.md"]
+        F3[".lania/agents/<br/>coding.agent.md"]
+    end
+
+    subgraph APISource["API 来源"]
+        A1["container.create_agent()"]
+        A2["container.update_agent()"]
+        A3["container.delete_agent()"]
+    end
+
+    subgraph Loading["加载路径"]
+        CE["CustomizationEngine._sync_agents()"]
+        ADM["AgentDefManager<br/>(文件 Agent 加载器)"]
+        SSS2["SQLiteStateStore<br/>upsert_agent_def()"]
+    end
+
+    subgraph Registry["AgentDefRegistry (合并)"]
+        REG["合并规则<br/>API 覆盖文件<br/>同名冲突"]
+        REG_LIST["list_agents()<br/>合并 + 过滤 subagent_only"]
+        REG_GET["get_agent(name)<br/>API 优先 / 文件兜底"]
+    end
+
+    subgraph SubAgent["子 Agent 映射"]
+        SA["AgentDefSubAgentAdapter<br/>AgentDef → SubAgentDef"]
+        SAREG["CustomizationEngine<br/>._sub_agent_registry"]
+        AO["AgentOrchestrator<br/>spawn() / spawn_parallel()"]
+    end
+
+    subgraph Output2["输出"]
+        O2_1["① System Prompt 构建"]
+        O2_2["② Agent 身份选择"]
+        O2_3["⑦ 工具白名单"]
+        O2_4["⑨ 预算控制"]
+        O2_5["AgentOrchestrator 消费"]
+    end
+
+    F1 --> CE
+    F2 --> CE
+    F3 --> CE
+    CE --> ADM
+    A1 --> SSS2
+    A2 --> SSS2
+    A3 --> SSS2
+    ADM --> REG
+    SSS2 --> REG
+    REG --> REG_LIST
+    REG --> REG_GET
+    REG --> O2_1
+    REG --> O2_2
+    REG --> O2_3
+    REG --> O2_4
+    ADM --> SA --> SAREG --> AO --> O2_5
+```
+
+---
+
+### 13.6 Brain 执行链路
+
+```mermaid
+graph TB
+    User["用户输入"] --> AS["AgentService.process()"]
+
+    subgraph Brain["Brain 执行路径"]
+        direction TB
+
+        subgraph IR["IntentRecognizer (双层识别)"]
+            IR1["Layer 1: QuickHeuristicClassifier<br/>关键词/正则匹配, <1ms, 覆盖 ~80%"]
+            IR2["Layer 2: LLMIntentClassifier<br/>LLM 分类, ~200ms, 兜底 ~20%"]
+            IR3["输出: IntentDecision<br/>complexity / suggested_sources<br/>suggested_mode / risk_level"]
+        end
+
+        subgraph MR["ModeRouter (模式路由)"]
+            MR1["输入: IntentDecision + RouteContext"]
+            MR2["5 条升级规则:<br/>① critical → plan_confirm<br/>② ≥3 知识源 → plan<br/>③ needs_planning → plan<br/>④ 用户偏好确认 → plan<br/>⑤ high/critical+chat → autopilot"]
+            MR3["输出: RouteResult(mode)"]
+        end
+
+        subgraph MCG["MemoryCommitGate (记忆管理层)"]
+            MCG1["① 对话中提取事实<br/>FactMemory<br/>结构化事实/偏好"]
+            MCG2["② 向量检索历史<br/>EpisodicMemory<br/>对话段落"]
+            MCG3["③ 实体关系提取<br/>EntityMemory<br/>实体→关系图"]
+            MCG4["④ LLM 审核<br/>高置信度 → 持久化<br/>低置信度 → 丢弃"]
+        end
+
+        subgraph CM["BrainContextManager (上下文组装)"]
+            CM1["① CustomizationEngine → system_prompt"]
+            CM2["② MemoryCommitGate → 三层记忆注入<br/>(D14: Fact / Episodic / Entity)"]
+            CM3["③ UserProfileService → 用户画像"]
+            CM4["④ Context Compactor (D4)<br/>超出 token 阈值时:<br/>summarize → 历史摘要<br/>prune → 裁剪低价值轮次"]
+            CM5["输出: BrainContext<br/>(完整 LLM 上下文)"]
+        end
+
+        subgraph AL["AgentLoop (LLM 工具循环)"]
+            AL1["① 计划生成 (needs_planning)"]
+            AL2["② 构建 messages (system + history + user)"]
+            AL3["③ 初始化 AgentBudget<br/>max_steps / max_tool_calls"]
+            AL4["④ LLM 循环:<br/>LLM.chat() → 工具调用 → 执行 → 回传"]
+            AL5["⑤ 反思 (plan 模式)"]
+            AL6["⑥ Replan 检测 (D11)<br/>触发条件:<br/>· 意外发现<br/>· tool_failed<br/>· 新方向<br/>· 计划耗尽"]
+            AL7["⑦ 暂停/恢复:<br/>consent / client_exec"]
+            AL8["⑧ 输出: AgentEvent 事件流"]
+            AL6 -->|"触发 replan"| AL1
+        end
+
+        subgraph SE["StepExecutor (步骤执行器)"]
+            SE1["① SafetyEngine.pre_tool_call<br/>安全策略检查"]
+            SE2["② PolicyEngine.evaluate()<br/>Agent 工具白名单"]
+            SE3["③ GuardrailEngine.validate_tool_call()<br/>输入护栏"]
+            SE4["④ EventBus.emit(before_tool)<br/>ToolHook 阻断"]
+            SE5["⑤ 确认矩阵决策<br/>risk_level + mode → 是否需确认"]
+            SE6["⑥ ConsentStore 检查<br/>是否已记住用户选择"]
+            SE6_5["⑥½ AgentCache 查缓存 (第三波)<br/>工具名+参数哈希命中 →<br/>直接返回缓存结果<br/>避免重复执行"]
+            SE7["⑦ 路由执行:<br/>server → ToolRegistry.run()<br/>client → 下发客户端"]
+            SE7_1["⑦½ CircuitBreaker 重试+熔断 (第二波)<br/>指数退避重试 3 次<br/>连续失败 → 熔断<br/>避免级联故障"]
+            SE8["⑧ SafetyEngine.post_tool_call<br/>输出内容安全扫描"]
+            SE9["⑨ EventBus.emit(after_tool)<br/>审计日志"]
+            SE9_5["⑨½ AgentCache 写缓存<br/>工具结果写入缓存<br/>设置 TTL"]
+            SE10["⑩ CheckpointManager (D22)<br/>每步完成后保存检查点:<br/>step + 状态快照<br/>支持 crash 后恢复"]
+        end
+
+        SE1 --> SE2 --> SE3 --> SE4 --> SE5 --> SE6 --> SE6_5 --> SE7 --> SE7_1 --> SE8 --> SE9 --> SE9_5 --> SE10
+    end
+
+    User --> IR --> MR --> MCG --> CM --> AL
+    AL -->|"每步 tool_call"| SE
+    SE -->|"tool_result"| AL
+    AL -->|"AgentEvent 流"| User
+```
+
+---
+
+### 13.7 工具系统
+
+```mermaid
+graph TB
+    subgraph ToolSources["工具来源 (5 种)"]
+        T1["内置工具<br/>register_default_tools()"]
+        T2["自定义工具<br/>register_tool()"]
+        T3["MCP 工具<br/>mcp-servers.json →<br/>McpAgentToolAdapter"]
+        T4["委派工具<br/>delegate_to_agent"]
+        T5["Extension 工具<br/>load_extension / load_rule"]
+    end
+
+    subgraph TR["ToolRegistry (注册表)"]
+        TR1["register(tool) → _tools[name]"]
+        TR2["describe(name) → ToolSchema<br/>risk_level / execution_target"]
+        TR3["get(name) → AgentTool"]
+        TR4["run(name, args, context) → ToolOutputEnvelope"]
+    end
+
+    subgraph Tools_Group["工具分类 (~40 个)"]
+        CAT1["RAG 工具<br/>rag_retrieve / rag_query<br/>rag_grounded / ingest"]
+        CAT2["代码工具<br/>read_file / search_code<br/>write_file / run_test"]
+        CAT3["数据工具<br/>database_query<br/>api_contract"]
+        CAT4["外部 API 工具<br/>weather / finance / news<br/>currency / chart / translate"]
+        CAT5["系统工具<br/>calculator / datetime<br/>geocoding / url_fetch"]
+        CAT6["分析工具<br/>analysis / report<br/>artifact"]
+        CAT7["委派工具<br/>delegate_to_agent"]
+    end
+
+    subgraph Caps["Capability 层"]
+        CAP1["CapabilityRegistry<br/>名称/描述/工具/工作流"]
+        CAP2["CapabilityProvider<br/>execute() 执行逻辑"]
+    end
+
+    T1 --> TR
+    T2 --> TR
+    T3 --> TR
+    T4 --> TR
+    T5 --> TR
+    TR --> CAT1
+    TR --> CAT2
+    TR --> CAT3
+    TR --> CAT4
+    TR --> CAT5
+    TR --> CAT6
+    TR --> CAT7
+    CAT1 --> CAP1
+    CAT2 --> CAP1
+    CAP1 --> CAP2
+```
+
+---
+
+### 13.8 防护链（9 层 Defense Chain）
+
+```mermaid
+graph LR
+    subgraph DC["每次 Agent 请求的 9 层防护链"]
+        direction LR
+
+        L1["① System Prompt<br/>InstructionsManager<br/>拼接 AGENTS.md<br/>+ AgentDef + Skill<br/>LLM 可见"]
+        L2["② Agent 身份选择<br/>AgentDefManager<br/>决定 system_prompt<br/>+ allowed_tools<br/>LLM 不可见"]
+        L3["③ ModeRouter<br/>决定执行模式<br/>chat/plan/autopilot<br/>不受原语影响"]
+        L4["④ AgentLoop<br/>接收 system_prompt<br/>+ allowed_tools<br/>LLM 循环"]
+        L5["⑤ File Instructions<br/>FileInstructionManager<br/>按 glob 匹配文件<br/>注入 ToolContext"]
+        L6["⑥ EventBus (Hooks)<br/>before_tool 可阻断<br/>after_tool 只读审计<br/>tool_failed 告警"]
+        L7["⑦ PolicyEngine<br/>Agent 工具白名单<br/>+ 策略 Profile<br/>拒绝未授权工具"]
+        L8["⑧ ToolRegistry<br/>MCP 工具 + 全局工具<br/>按 risk_level 分发:<br/>low→inline<br/>medium→thread<br/>high→sandbox"]
+        L9["⑨ AgentBudget<br/>max_turns /<br/>max_tool_calls /<br/>max_cost"]
+    end
+
+    L1 -->|"字符串拼接"| L2
+    L2 -->|"LLM 不可见"| L3
+    L3 -->|"模式选择"| L4
+    L4 -->|"每步 tool_call"| L5
+    L5 -->|"注入指令"| L6
+    L6 -->|"可阻断"| L7
+    L7 -->|"白名单过滤"| L8
+    L8 -->|"执行"| L9
+    L9 -->|"超限中止"| L4
+```
+
+---
+
+### 13.9 总串联架构图
+
+```mermaid
+graph TB
+    UserInput["用户输入"] --> API_Entry
+
+    subgraph API_Entry["入口层 (AgentPlatformContainer)"]
+        PC["process_chat(message, session_id, agent_name)"]
+        EC["execute_command(message)"]
+        MGMT["管理方法<br/>create_agent / list_agents<br/>create_skill / list_prompts<br/>set_llm_provider / connect_mcp"]
+    end
+
+    subgraph Primitive["原语加载 (CustomizationEngine)"]
+        CE_INIT["initialize()<br/>启动时扫描 .lania/"]
+        CE_BUILD["build_session_context()<br/>按请求组装"]
+    end
+
+    subgraph Store_Layer["存储层"]
+        IMS2["InMemoryState<br/>(热缓存)"]
+        SSS3["SQLiteStateStore<br/>(持久化 - 31 方法)"]
+        REG2["AgentDefRegistry<br/>(文件+API 双源合并)"]
+    end
+
+    PC -->|"1. 构建上下文"| CE_BUILD
+    CE_BUILD -->|"session_context<br/>system_prompt + agent_def"| BRAIN
+
+    subgraph BRAIN["Brain 执行路径"]
+        IR4["IntentRecognizer<br/>QuickHeuristicClassifier (80%)<br/>LLMIntentClassifier (20%)"]
+        MR4["ModeRouter<br/>5 条升级规则"]
+        BM["BrainContextManager<br/>+ UserProfileService<br/>+ Context Compactor (D4)"]
+        AL7["AgentLoop<br/>LLM 循环 + 暂停/恢复<br/>+ Replan (D11)"]
+        TD2["TaskDecomposer<br/>分解 + 重新分解"]
+        SE10["StepExecutor<br/>安全 → 策略 → 护栏 →<br/>确认 → 路由 → 输出扫描<br/>+ Checkpoint (D22)"]
+    end
+
+    IR4 --> MR4 --> BM --> AL7 --> SE10
+    AL7 -->|"Replan (D11)"| TD2
+    TD2 --> AL7
+
+    subgraph Memory["记忆层 (D14)"]
+        FM["FactMemory<br/>结构化事实/偏好"]
+        EM1["EpisodicMemory<br/>向量检索对话历史"]
+        ENM["EntityMemory<br/>实体关系图"]
+        MCG2["MemoryCommitGate<br/>LLM 审核 → 持久化"]
+    end
+
+    subgraph Security["安全层"]
+        SAE["SafetyEngine<br/>可插拔策略<br/>pre/post tool_call"]
+        PE["PolicyEngine<br/>YAML 策略 Profile<br/>工具白名单"]
+        GE["GuardrailEngine<br/>输入/输出护栏"]
+        CS["ConsentStore<br/>用户确认持久化"]
+    end
+
+    subgraph Hooks_Event["钩子层"]
+        EB["EventBus<br/>8 种事件类型"]
+        FH["FileHookRunner<br/>.lania/hooks/*.yaml"]
+        AH["AuditLogger (编程式)"]
+        RL["RateLimiter (编程式)"]
+    end
+
+    subgraph Tool["工具执行层"]
+        TR2["ToolRegistry<br/>~40 个工具"]
+        CAP3["CapabilityRegistry<br/>CapabilityProvider"]
+        MCP["MCP 工具<br/>McpAgentToolAdapter"]
+        DTG["DelegationTool (第二波)<br/>delegate_to_agent<br/>主 Agent 通过工具调用委派子任务"]
+        CACHE["AgentCache (第三波)<br/>工具名+参数哈希<br/>TTL 内直接返回"]
+        CB["CircuitBreaker (第二波)<br/>指数退避重试 3 次<br/>连续失败触发熔断"]
+        SAND["ToolSandbox<br/>inline / thread / process"]
+        CK["CheckpointManager (D22)<br/>每步完成后保存检查点"]
+    end
+
+    subgraph Orchestration["编排层 (D17/D23)"]
+        BP3["BudgetPool (D23)<br/>全局预算计数器<br/>总步数/工具调用/token"]
+        AB3["AgentBus (D17)<br/>Agent 间消息总线<br/>request_reply/pub_sub/negotiate"]
+        AO3["AgentOrchestrator<br/>spawn / spawn_parallel"]
+    end
+
+    subgraph Observability["可观测层"]
+        OB_TR["TraceRecorder<br/>Span / AgentTrace"]
+        OB_EX["TraceExporter<br/>Console / Prometheus / OTel"]
+        OB_HE["HealthMonitor<br/>指标收集"]
+        OB_AU["Audit<br/>审计日志"]
+    end
+
+    SE10 --> SAE
+    SE10 --> PE
+    SE10 --> GE
+    SE10 --> CS
+    SE10 --> EB
+    SE10 --> CK
+    EB --> FH
+    EB --> AH
+    EB --> RL
+    SE10 --> CACHE
+    CACHE -->|"未命中"| TR2
+    TR2 --> CB
+    CB -->|"重试后失败"| SAND
+    TR2 --> MCP
+    TR2 --> DTG
+    TR2 --> CAP3
+    BM -->|"三层记忆注入"| MCG2
+    MCG2 --> FM
+    MCG2 --> EM1
+    MCG2 --> ENM
+    AL7 --> OB_TR
+    OB_TR --> OB_EX
+
+    PC --> MGMT
+    MGMT --> SSS3
+    MGMT --> REG2
+    CE_INIT --> SSS3
+    CE_INIT --> REG2
+
+    subgraph External_Deps["外部依赖"]
+        LLM_API["LLM API<br/>OpenAI / Anthropic"]
+        SQLITE["SQLite 文件<br/>app.sqlite3"]
+        MCP_SRV["MCP 服务器"]
+    end
+
+    AL7 -->|"LLM.chat() / chat_stream()"| LLM_API
+    SSS3 --> SQLITE
+    MCP --> MCP_SRV
+
+    subgraph Scenarios["三个目标场景"]
+        SC1["案例一: 单 Agent 对话助手<br/>simple_chat → 最短路径"]
+        SC2["案例二: 文档分析 Agent<br/>多子 Agent 并行 → 审批流"]
+        SC3["案例三: Coding Agent<br/>审查 → 修复 → 生成 → 审批"]
+    end
+
+    SC1 --> PC
+    SC2 --> PC
+    SC2 --> BP3
+    SC2 --> AO3
+    SC2 --> AB3
+    SC3 --> PC
+    SC3 --> BP3
+    SC3 --> AO3
+    SC3 --> AB3
+    BP3 --> AO3
+    AO3 <--> AB3
+```
+
+---
+
+### 13.10 接线进度一览（已全部入图，部分待实现代码）
+
+```mermaid
+graph TB
+    subgraph Wave1["第一波: 核心安全 + 记忆"]
+        W1_1["MemoryCommitGate<br/>→ BrainContextManager"]
+        W1_2["UserProfileService<br/>→ BrainContextManager"]
+        W1_3["PolicyEngine<br/>→ StepExecutor"]
+        W1_4["GuardrailEngine<br/>→ StepExecutor"]
+        W1_5["ConsentStore 持久化<br/>→ SQLiteStateStore"]
+    end
+
+    subgraph Wave2["第二波: 可观测 + 执行增强"]
+        W2_1["EventBus 触发<br/>→ AgentLoop.run()"]
+        W2_2["ToolSandbox 分级<br/>→ StepExecutor"]
+        W2_3["重试 + 熔断<br/>→ StepExecutor"]
+        W2_4["委派工具注册<br/>→ register_default_tools()"]
+    end
+
+    subgraph Wave3["第三波: 治理 + 优化"]
+        W3_1["AgentBudget 完善<br/>→ AgentLoop"]
+        W3_2["速率限制<br/>→ ToolHook 协议"]
+        W3_3["Agent 缓存<br/>→ StepExecutor"]
+    end
+
+    subgraph Future["后续补充 (D1-D24)"]
+        D["D1-D24 详见第十章<br/>防护链 / 子 Agent / 评测<br/>AgentOrchestrator / AgentBus / ..."]
+    end
+
+    Wave1 -->|"先装锁"| Wave2
+    Wave2 -->|"再装监控"| Wave3
+    Wave3 -->|"最后优化"| Future
+```
+
+---
+
+### 13.11 功能点与章节映射表
+
+| 功能点 | 章节 | 代码位置 | 状态 |
+|---|---|---|---|
+| **LLM Protocol** | §2.1 | `agents/brain/` | 已实现 |
+| **StateStore Protocol** | §2.2 | `services/_store.py` | 已实现 |
+| **ToolHook Protocol** | §2.3 | `harness/hooks.py` | 已实现 |
+| **TraceExporter Protocol** | §2.4 | `observability/` | 已实现 |
+| **Agent 类型系统** | §2.6 | `services/agent_def_manager.py` | 已实现 |
+| **AgentPlatformContainer** | §三 | `container.py` | 已设计 |
+| **InMemoryState** | §四 | `services/_state.py` | 已实现 |
+| **SQLiteStateStore** | §四 | `services/_store.py` | 已实现 |
+| **IntentRecognizer** | §十一 链路 | `agents/brain/intent_recognizer.py` | 已实现 |
+| **ModeRouter** | §十一 链路 | `agents/brain/mode_router.py` | 已实现 |
+| **AgentLoop** | §十一 链路 | `agents/brain/agent_loop.py` | 已实现 |
+| **StepExecutor** | §十一 链路 | `agents/brain/step_executor.py` | 已实现 |
+| **SafetyEngine** | §九 第一波 | `harness/safety/engine.py` | 已实现 |
+| **PolicyEngine** | §九 第一波 | `harness/policy.py` | 已实现 |
+| **GuardrailEngine** | §九 第一波 | `harness/guardrails.py` | 已实现 |
+| **ConsentStore** | §九 第一波 | `agents/brain/consent_store.py` | 已实现 |
+| **EventBus** | §九 第二波 | `harness/hooks.py` | 已实现 |
+| **ToolSandbox** | §九 第二波 | `harness/sandbox.py` | 已实现 |
+| **CircuitBreaker (重试+熔断)** | §九 第二波 | `agents/brain/circuit_breaker.py` | 已实现 + 已入图 |
+| **DelegationTool** | §九 第二波 | `agents/tools/delegation_tools.py` | 已实现 + 已入图 |
+| **AgentBudget** | §九 第三波 | `agents/brain/agent_loop.py` | 已实现 |
+| **RateLimiter** | §九 第三波 | `services/rate_limiter.py` | 已实现 |
+| **AgentCache** | §九 第三波 | `services/agent_cache.py` | 已实现 + 已入图 |
+| **MemoryCommitGate** | §九 第一波 | `services/memory_commit_gate.py` | 已实现 |
+| **UserProfileService** | §九 第一波 | `services/user_profile_service.py` | 已实现 |
+| **BrainContextManager** | §三 | `agents/brain/context_manager.py` | 已实现 |
+| **CustomizationEngine** | §十二 | `services/customization_engine.py` | 已实现 |
+| **AgentDefManager** | §十二 | `services/agent_def_manager.py` | 已实现 |
+| **SkillManager** | §十二 | `services/skill_manager.py` | 已实现 |
+| **PromptManager** | §十二 | `services/prompt_manager.py` | 已实现 |
+| **McpManager** | §十二 | `services/mcp_manager.py` | 已实现 |
+| **FileInstructionManager** | §十二 | `services/file_instruction_manager.py` | 已实现 |
+| **InstructionsManager** | §十二 | `services/instructions_manager.py` | 已实现 |
+| **ToolRegistry** | §十三 工具 | `agents/tools/registry.py` | 已实现 |
+| **~40 个 AgentTool** | §十三 工具 | `agents/tools/*.py` | 已实现 |
+| **CapabilityRegistry** | §十三 工具 | `capabilities/registry.py` | 已实现 |
+| **AgentDefRegistry (双源合并)** | §12.7 | 待实现 (D9) | 已设计 |
+| **AgentDefSubAgentAdapter** | §12.6 | 待实现 | 已设计 |
+| **AgentOrchestrator** | §12.6 | 待实现 (D12) | 已设计 |
+| **SubAgentDef 与 spawn** | §12.6 | 待实现 (D12) | 已设计 |
+| **TaskDecomposer (Replan)** | §十 D11 | 待实现 | 已设计 + 已入图 |
+| **ApprovalWorkflow** | §十 D18 | 待实现 | 已规划 |
+| **AgentBus** | §十 D17 | 待实现 | 已设计 + 已入图 |
+| **BudgetPool** | §十 D23 | 待实现 | 已设计 + 已入图 |
+| **CheckpointManager** | §十 D22 | 待实现 | 已设计 + 已入图 |
+| **三层记忆架构** | §十 D14 | 待实现 | 已设计 + 已入图 |
+| **Context Compactor** | §十 D4 | 待实现 | 已设计 + 已入图 |
+| **EvalSuite** | §十 D19 | 待实现 | 已规划 |
+
+---
+
+### 13.12 多 Agent 协作链路
+
+> 对应 §十一 案例二（文档分析）和案例三（Coding Agent）。覆盖子 Agent 注册、编排、执行、审批、结果合并全流程。
+
+#### 13.12.1 子 Agent 注册链路
+
+```mermaid
+graph TB
+    subgraph Files["文件系统 .lania/agents/"]
+        A1["reviewer.agent.md<br/>---<br/>name: code-reviewer<br/>subagent_only: true<br/>model: gpt-4o-mini<br/>allowed_tools:<br/>  - read_file<br/>  - search_code<br/>  - run_test<br/>max_turns: 15<br/>max_tool_calls: 30"]
+        A2["fixer.agent.md<br/>---<br/>name: code-fixer<br/>subagent_only: true<br/>..."]
+        A3["coding.agent.md<br/>---<br/>name: coding-assistant<br/>sub_agents:<br/>  - code-reviewer<br/>  - code-fixer<br/>allowed_tools:<br/>  - delegate_to_agent<br/>  - read_file"]
+    end
+
+    subgraph Registration["CustomizationEngine._sync_agents()"]
+        STEP1["AgentDefManager.sync(agents_dir)<br/>加载全部 .agent.md → AgentDefinition"]
+        STEP2["遍历 AgentDefManager.list_agent_defs()"]
+        STEP3["检查: subagent_only?<br/>或被主 Agent sub_agents 引用?"]
+        STEP4["AgentDefSubAgentAdapter.to_sub_agent_def()<br/>AgentDefinition → SubAgentDef"]
+        STEP5["注册到 _sub_agent_registry[name]"]
+    end
+
+    subgraph Registry["运行时状态"]
+        ADM["AgentDefManager (主 Agent 注册表)"]
+        REG_M["_sub_agent_registry<br/>code-reviewer → SubAgentDef<br/>code-fixer → SubAgentDef"]
+    end
+
+    A1 --> STEP1
+    A2 --> STEP1
+    A3 --> STEP1
+    STEP1 --> STEP2 --> STEP3 --> STEP4 --> STEP5
+    STEP5 --> REG_M
+    STEP1 --> ADM
+```
+
+#### 13.12.2 案例二：文档分析 Agent（并行协作）
+
+```mermaid
+graph TB
+    User2["用户: 分析这份行业报告"]
+    --> IR2["IntentRecognizer<br/>→ document_analysis"]
+    --> MR2["ModeRouter<br/>multi_source → PLAN"]
+    --> AL2["主 Agent AgentLoop<br/>(coding-assistant)"]
+
+    AL2 --> TD["TaskDecomposer<br/>分解任务为:\n① 解析文档结构\n② 语义分析\n③ 生成报告"]
+
+    subgraph BP["BudgetPool (D23)<br/>全局预算池"]
+        BP_CT["总步数计数器<br/>总工具调用计数器<br/>总 token 计数器"]
+        BP_CHECK{"任一超限?"}
+        BP_STOP["终止整个任务"]
+    end
+
+    TD --> BP
+    BP --> BP_CHECK
+
+    subgraph AB["AgentBus (D17)<br/>Agent 间消息总线"]
+        AB_MODE["支持三种模式:<br/>· request_reply (一问一答)<br/>· pub_sub (广播事件)<br/>· negotiate (多轮协商)"]
+        AB_MSG["子 Agent 间直接通信<br/>绕过主 Agent 转发"]
+    end
+
+    subgraph SpawnParallel["AgentOrchestrator.spawn_parallel()"]
+        SP1["spawn('doc_parser', '解析文档')"]
+        SP2["spawn('semantic_analyzer', '语义分析')"]
+    end
+
+    BP_CHECK -->|"未超限"| SpawnParallel
+    SpawnParallel <--> AB
+    TD -->|"并行"| BP_CHECK
+
+    subgraph Parser["子 Agent: doc_parser"]
+        P_CE["CustomizationEngine<br/>.get_sub_agent('doc_parser')"]
+        P_SD["返回 SubAgentDef<br/>system_prompt: 读取文档...<br/>allowed_tools: [read_file, ingest, extract_tables]<br/>max_steps: 5"]
+        P_AL["AgentLoop.run(task)<br/>Plan 模式启用反思"]
+        P_SE["StepExecutor<br/>read_file / ingest_document"]
+        P_RES["SubAgentResult<br/>status: completed<br/>summary: 文档结构已提取<br/>artifacts: [章节列表, 表格]"]
+    end
+
+    subgraph Analyzer["子 Agent: semantic_analyzer"]
+        A_CE["CustomizationEngine<br/>.get_sub_agent('semantic_analyzer')"]
+        A_SD["返回 SubAgentDef<br/>system_prompt: 分析逻辑关系...<br/>allowed_tools: [retrieve_similar, extract_entities]<br/>max_steps: 8"]
+        A_AL["AgentLoop.run(task)"]
+        A_SE["StepExecutor<br/>retrieve_similar / extract_entities"]
+        A_RES["SubAgentResult<br/>status: completed<br/>summary: 关键发现已识别<br/>artifacts: [实体关系图]"]
+    end
+
+    SP1 --> P_CE --> P_SD --> P_AL --> P_SE --> P_RES
+    SP2 --> A_CE --> A_SD --> A_AL --> A_SE --> A_RES
+
+    subgraph Merge["结果合并"]
+        MG["主 Agent 汇总 SubAgentResult"]
+        SG["spawn('summary_generator', ctx={...})<br/>生成结构化报告"]
+    end
+
+    P_RES --> MG
+    A_RES --> MG
+    MG --> SG
+
+    subgraph Summary["子 Agent: summary_generator"]
+        S_CE["get_sub_agent('summary_generator')"]
+        S_SD["SubAgentDef"]
+        S_AL["AgentLoop.run(ctx)<br/>write_report / generate_chart"]
+        S_RES["SubAgentResult<br/>报告全文"]
+    end
+
+    SG --> S_CE --> S_SD --> S_AL --> S_RES
+
+    subgraph Approval["ApprovalWorkflow"]
+        AP["ApprovalNode<br/>trigger: current_agent == summary_generator<br/>approvers: [analyst]<br/>timeout: 7200s"]
+        AP_DEC{"审批结果?"}
+        AP_OK["通过 → 返回用户"]
+        AP_RJ["拒绝 → modify 提示"]
+    end
+
+    S_RES --> AP --> AP_DEC
+    AP_DEC -->|"通过"| AP_OK
+    AP_DEC -->|"拒绝"| AP_RJ
+    AP_RJ --> SG
+```
+
+#### 13.12.3 案例三：Coding Agent（串行协作 + 审批门控）
+
+```mermaid
+graph TB
+    User3["用户: 检查这个 SQL 查询的性能并修复"]
+    --> IR3["IntentRecognizer<br/>→ code_review"]
+    --> MR3["ModeRouter<br/>multi_tool → PLAN"]
+    --> AL3["主 Agent AgentLoop<br/>(coding-assistant)"]
+
+    AL3 --> TD3["TaskDecomposer<br/>分解为:\n① code-reviewer 审查 SQL\n② code-fixer 修复 SQL<br/>(串行依赖)"]
+
+    subgraph BP2["BudgetPool (D23)<br/>全局预算池"]
+        BP2_CT["总步数计数器<br/>总工具调用计数器<br/>总 token 计数器"]
+        BP2_CHECK{"任一超限?"}
+        BP2_STOP["终止整个任务"]
+    end
+
+    subgraph AB2["AgentBus (D17)<br/>Agent 间消息总线"]
+        AB2_MSG["reviewer → fixer 直接传递<br/>审查报告，绕过主 Agent"]
+    end
+
+    TD3 --> BP2
+    BP2_CHECK -->|"未超限"| Sequential
+
+    subgraph Sequential["AgentOrchestrator.spawn_sequential()"]
+        direction TB
+
+        subgraph Review["Step 1: code-reviewer"]
+            R_CE["get_sub_agent('code-reviewer')"]
+            R_SD["SubAgentDef<br/>system_prompt: 审查代码...<br/>allowed_tools: [read_file, search_code, grep]<br/>max_tool_calls: 16"]
+            R_AL["AgentLoop.run('审查 SQL 查询')"]
+            R_SE["StepExecutor<br/>read_file → search_code → grep"]
+            R_RES["SubAgentResult<br/>status: completed<br/>summary: 发现 3 个性能问题<br/>artifacts: [审查报告]"]
+        end
+
+        subgraph Fix["Step 2: code-fixer"]
+            F_CE["get_sub_agent('code-fixer')"]
+            F_SD["SubAgentDef<br/>system_prompt: 根据审查报告修复...<br/>allowed_tools: [write_file, edit_file, run_test]<br/>max_tool_calls: 24"]
+            F_AL["AgentLoop.run(review_result)"]
+
+            subgraph Fix_SE["StepExecutor 审批触发"]
+                F_SE["write_file / edit_file"]
+                F_AP["ApprovalNode<br/>trigger: agent == code-fixer<br/>&& tool == write_file<br/>approvers: [senior_dev]"]
+                F_AP_DEC{"审批?"}
+                F_AP_OK["通过 → 继续执行"]
+                F_AP_RJ["拒绝 → modify 重试"]
+            end
+
+            F_AL --> F_SE --> F_AP --> F_AP_DEC
+            F_AP_DEC -->|"通过"| F_AP_OK
+            F_AP_DEC -->|"拒绝"| F_AP_RJ --> F_AL
+
+            F_RES["SubAgentResult<br/>status: completed<br/>summary: 已修复 3 个问题<br/>artifacts: [diff]"]
+            F_AP_OK --> F_RES
+        end
+
+        R_RES -->|"review_result 传入"| F_CE
+    end
+
+    TD3 --> Review
+    Review --> Fix
+
+    subgraph Final["最终汇总"]
+        F_OUT["主 Agent 汇总 SubAgentResult<br/>→ 输出给用户"]
+    end
+
+    Fix --> F_OUT
+```
+
+#### 13.12.4 多 Agent 全链路执行序列
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Main as 主 Agent<br/>(coding-assistant)
+    participant BP as BudgetPool(D23)<br/>全局预算
+    participant TD as TaskDecomposer
+    participant AB as AgentBus(D17)<br/>消息总线
+    participant AO as AgentOrchestrator
+    participant CE as CustomizationEngine<br/>_sub_agent_registry
+    participant Sub1 as 子 Agent<br/>(code-reviewer)
+    participant Sub2 as 子 Agent<br/>(code-fixer)
+    participant AP as ApprovalWorkflow<br/>(审批)
+
+    User->>Main: "检查 SQL 并修复"
+    Main->>TD: 分解任务
+    TD->>BP: 注册全局预算
+    BP-->>TD: 预算分配
+    TD->>AO: spawn_sequential([reviewer, fixer])
+
+    Note over AO,CE: Step 1: 审查
+    AO->>CE: get_sub_agent("code-reviewer")
+    CE-->>AO: SubAgentDef(system_prompt, allowed_tools, budget)
+    AO->>Sub1: AgentLoop.run("审查 SQL 查询")
+    Sub1->>Sub1: read_file → search_code → grep
+    Sub1-->>AO: SubAgentResult(审查报告)
+    AO-->>BP: 扣减预算
+    AO-->>Main: result
+
+    Note over AO,CE: Step 2: 修复 (依赖审查结果)
+    AO->>CE: get_sub_agent("code-fixer")
+    CE-->>AO: SubAgentDef(system_prompt, allowed_tools, budget)
+    Sub1->>AB: publish(review_result)
+    AB->>Sub2: 订阅获取审查报告
+    AO->>Sub2: AgentLoop.run(review_result)
+    Sub2->>Sub2: write_file
+    Sub2->>AP: 触发审批 (write_file 需要 senior_dev 确认)
+    AP-->>Sub2: 审批通过
+    Sub2->>Sub2: run_test → 测试通过
+    Sub2-->>AO: SubAgentResult(修复完成)
+    AO-->>Main: result
+
+    Main->>User: 输出: 审查报告 + 修复结果
+```
+
+#### 13.12.5 单 Agent 与多 Agent 路径对比
+
+| 维度 | 单 Agent (§11.1) | 多 Agent 并行 (§11.2) | 多 Agent 串行 (§11.3) |
+|---|---|---|---|
+| **IntentRecognizer 输出** | chat / simple | document_analysis | code_review / code_fix |
+| **ModeRouter 结果** | CHAT | PLAN | PLAN |
+| **AgentLoop 数量** | 1 个（主） | 1 个主 + N 个子并行 | 1 个主 + N 个子串行 |
+| **编排器** | 无 | AgentOrchestrator.spawn_parallel() | AgentOrchestrator.spawn_sequential() |
+| **审批门控** | 无 | ApprovalWorkflow（报告审批） | ApprovalWorkflow（写文件审批） |
+| **子 Agent 来源** | 无 | SubAgentDef（代码注册） | SubAgentDef（.agent.md 适配） |
+| **BudgetPool** | 单 Agent 级 AgentBudget | 全局计数器，任一超限终止整个任务 (D23) | 同左 |
+| **AgentBus** | 无 | 子 Agent 通过总线直接通信 (D17) | review_result 通过总线发布/订阅 |
+| **结果合并** | 无 | 主 Agent 汇总 + 生成报告 | 上一步结果传入下一步 |
