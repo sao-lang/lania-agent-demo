@@ -1117,3 +1117,193 @@ ConsentStore 持久化
 | D22 | 防护链 → StepExecutor 增加 CheckpointManager | 每步完成后保存检查点（step + 状态快照），支持 crash 后从中断处恢复执行，避免副作用重复执行 |
 | D23 | AgentOrchestrator → 全局预算池 BudgetPool | 所有子 agent 共享的全局计数器（总步数/总工具调用/总 token），任一超限终止整个任务；替代当前单 agent 级别的 AgentBudget |
 | D24 | 简单对话模式 → AgentType 简化配置 | 新增 simple_chat agent_type，默认关闭防护链中非必要的安全检查（Sandbox/PolicyEngine），使用最短路径（IntentRecognizer → AgentLoop）|
+
+---
+## 十一、目标场景与案例
+
+以下三个案例定义了平台要实现的核心目标。每个案例都是一个完整的 agent 应用，覆盖不同的复杂度。
+
+### 11.1 案例一：单 agent 对话助手（最简路径）
+
+**目标**：5 行代码启动一个可对话的 agent。
+
+ `python
+from agent_platform import AgentPlatformContainer, PlatformSettings
+
+container = AgentPlatformContainer(
+    settings=PlatformSettings(llm_api_key="sk-xxx", llm_model="gpt-4o"),
+)
+container.create_agent({
+    "name": "assistant",
+    "agent_type": "simple_chat",
+    "allowed_tools": ["web_search", "calculate", "fetch_webpage"],
+})
+container.register_default_tools()
+
+async for event in container.process_chat("今天纽约天气怎么样？"):
+    print(event)
+ `
+
+### 11.1 案例一：单 agent 对话助手（最简路径）
+
+**目标**：5 行代码启动一个可对话的 agent。
+
+```python
+from agent_platform import AgentPlatformContainer, PlatformSettings
+
+container = AgentPlatformContainer(
+    settings=PlatformSettings(llm_api_key="sk-xxx", llm_model="gpt-4o"),
+)
+container.create_agent({
+    "name": "assistant",
+    "agent_type": "simple_chat",
+    "allowed_tools": ["web_search", "calculate", "fetch_webpage"],
+})
+container.register_default_tools()
+
+async for event in container.process_chat("今天纽约天气怎么样？"):
+    print(event)
+```
+
+**执行链路**：
+
+```
+用户输入 → IntentRecognizer(关键词匹配 ≈80%, LLM兜底 ≈20%)
+         → ModeRouter(low risk → CHAT)
+         → AgentLoop(LLM 决定工具调用)
+         → ToolHook(audit)
+         → 返回
+```
+
+**验证标准**：
+- 从启动到可对话：< 1 秒
+- 框架单次请求延迟：< 5ms（不含 LLM 耗时）
+- 关键词命中率：> 80% 不走 LLM
+
+---
+
+### 11.2 案例二：文档分析 agent（多 agent 协作）
+
+**目标**：分析一份 50 页 PDF，自动分工、并行处理、输出结构化报告。
+
+```python
+from agent_platform import AgentPlatformContainer, PlatformSettings, SubAgentDef, ApprovalWorkflow, ApprovalNode
+
+container = AgentPlatformContainer(settings=PlatformSettings(...))
+
+container.register_agent_type("document_parse", SubAgentDef(
+    name="doc_parser",
+    system_prompt="读取文档，提取章节结构、关键数据、表格、引用。",
+    allowed_tools=["read_file", "ingest_document", "extract_tables"],
+    max_steps=5, max_tool_calls=10,
+))
+container.register_agent_type("document_analyze", SubAgentDef(
+    name="semantic_analyzer",
+    system_prompt="分析文档逻辑关系、论证链条、结论可靠性。",
+    allowed_tools=["retrieve_similar", "search_document", "extract_entities"],
+    max_steps=8, max_tool_calls=24,
+))
+container.register_agent_type("document_summary", SubAgentDef(
+    name="summary_generator",
+    system_prompt="生成结构化报告：摘要、关键发现、行动建议。中文输出。",
+    allowed_tools=["read_file", "write_report", "generate_chart"],
+    max_steps=5, max_tool_calls=10,
+))
+
+container.register_workflow("document_analysis", ApprovalWorkflow(nodes=[
+    ApprovalNode(
+        name="report_approve",
+        trigger=lambda ctx: ctx.current_agent == "summary_generator",
+        approvers=["analyst"],
+        timeout=7200, on_reject="modify",
+    ),
+]))
+
+container.create_agent({
+    "name": "doc-analysis",
+    "agent_type": "document",
+    "sub_agents": ["doc_parser", "semantic_analyzer", "summary_generator"],
+    "allowed_tools": ["delegate_to_agent"],
+})
+
+async for event in container.process_chat("分析这份行业报告"):
+    yield event
+```
+
+**执行链路**：
+
+```
+用户输入 → IntentRecognizer → document
+         → ModeRouter(multi_source → PLAN)
+         → TaskDecomposer 分解为: [解析, 分析, 汇总]
+         → AgentOrchestrator.spawn_parallel(parser, analyzer)
+               parser → 提取内容
+               analyzer → 理解内容
+         → 结果合并 → summary_generator 生成报告
+         → 触发审批 → analyst 确认 → 返回
+```
+
+---
+
+### 11.3 案例三：多 agent coding agent（完整治理）
+
+**目标**：包含代码审查、修复、生成三个角色，有独立工具集和审批流。
+
+```python
+from agent_platform import AgentPlatformContainer, PlatformSettings, SubAgentDef, ApprovalWorkflow, ApprovalNode
+
+container = AgentPlatformContainer(settings=PlatformSettings(...))
+
+container.register_agent_type("code_review", SubAgentDef(
+    name="code_reviewer",
+    system_prompt="审查代码风格、安全性、性能。只输出报告，不改代码。",
+    allowed_tools=["read_file", "search_code", "grep"],
+    max_steps=8, max_tool_calls=16,
+))
+container.register_agent_type("code_fix", SubAgentDef(
+    name="code_fixer",
+    system_prompt="根据审查报告修复代码缺陷。修复后自动运行测试验证。",
+    allowed_tools=["read_file", "write_file", "edit_file", "run_test"],
+    max_steps=12, max_tool_calls=24,
+))
+container.register_agent_type("code_gen", SubAgentDef(
+    name="code_generator",
+    system_prompt="根据需求生成新代码。遵循项目现有代码风格和架构。",
+    allowed_tools=["read_file", "write_file", "create_file", "list_files"],
+    max_steps=10, max_tool_calls=20,
+))
+
+container.register_workflow("code_review", ApprovalWorkflow(nodes=[
+    ApprovalNode(
+        name="fix_approve",
+        trigger=lambda ctx: ctx.current_agent == "code_fixer" and ctx.step_type == "write_file",
+        approvers=["senior_dev"],
+        timeout=3600, on_reject="modify",
+    ),
+]))
+
+container.create_agent({
+    "name": "coding-assistant",
+    "agent_type": "coding",
+    "sub_agents": ["code_reviewer", "code_fixer", "code_generator"],
+    "allowed_tools": ["delegate_to_agent", "read_file", "search_code"],
+})
+
+async for event in container.process_chat("检查这个 SQL 查询的性能并修复"):
+    yield event
+```
+
+**执行链路**：
+
+```
+用户 → IntentRecognizer → code_review
+     → ModeRouter(multi_tool → PLAN)
+     → AgentOrchestrator.spawn_sequential([
+           (reviewer, "检查 SQL"),
+           (fixer, "修复 SQL", ctx=review_result),
+       ])
+         → reviewer: [read_file, search_code] → 输出报告
+         → fixer: [write_file, run_test]
+           → 触发审批 → senior_dev 确认 → 继续
+     → 主 agent 汇总 → 输出
+```
