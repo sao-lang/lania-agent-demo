@@ -1078,3 +1078,19 @@ ConsentStore 持久化
 | D8 | Agent 类型系统 → 继承关系 | 强化 AgentDef.agent_type 如何继承类型默认工具集 |
 | D9 | 工具定义 → execution_mode | ToolDef 加 execution_mode: sequential/parallel 字段 |
 | D10 | AgentPlatformContainer → 预算参数 | max_steps、max_tool_calls 从第三波待接入提升为构造参数 |
+
+### 第五批：复杂场景扩展
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D11 | 新增章节：Replan 循环 | 在 AgentLoop 中增加 _should_replan() 判断（意外发现/工具失败/新方向/计划耗尽四种触发条件），以及 TaskDecomposer 将复杂任务分解为 3-5 个可并行子任务 |
+| D12 | 新增章节：AgentOrchestrator | 管理子 agent 完整生命周期的编排器，支持 spawn()（串行）和 spawn_parallel()（并行）；SubAgentDef 独立配置工具白名单/system prompt/budget；SubAgentResult 结构化返回协议（status/summary/artifacts/suggestions） |
+| D13 | 已有 DelegationTool → 扩展为多 agent 委派 | 现有 delegation_tools.py 中增加 DelegateTool，主 agent 通过普通工具调用即可委派子任务 |
+| D14 | 新增章节：三层记忆架构 | FactMemory（结构化事实）、EpisodicMemory（向量检索对话历史）、EntityMemory（实体关系图）；MemoryCommitGate 升级为从对话中自动抽取三层次信息 |
+
+### 第六批：现有架构强化
+
+| # | 插入位置 | 内容 |
+|---|---|---|
+| D15 | 防护链 → StepExecutor 中增加 replan 触发点 | replan 检测点插入防护链的 post_exec 层 |
+| D16 | AgentType → 子 agent 继承规则 | 定义子 agent 默认继承父级的哪些配置（防护链/记忆/策略），哪些可以覆盖 |
